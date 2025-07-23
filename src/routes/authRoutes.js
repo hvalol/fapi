@@ -18,7 +18,13 @@ router.post(
   authController.login
 );
 
+// Refresh token route
+router.post("/refresh-token", authController.refreshToken);
+
 // Validate token route
 router.get("/validate-token", authenticate, authController.validateToken);
+
+// Logout route
+router.post("/logout", authenticate, authController.logout);
 
 module.exports = router;

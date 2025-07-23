@@ -1,47 +1,74 @@
 // src/controllers/authController.js
-const { User } = require("../models");
-const { generateToken, verifyPassword } = require("../utils/authUtils");
+const authService = require("../services/authService");
 const { AppError } = require("../middlewares/errorHandler");
 
 exports.login = async (req, res, next) => {
   try {
     const { email, password } = req.body;
 
-    // Find user by email
-    const user = await User.findOne({ where: { email } });
-
-    if (!user) {
-      return next(new AppError("Invalid email or password", 401));
+    if (!email || !password) {
+      return next(new AppError("Please provide email and password", 400));
     }
 
-    // Verify password
-    const passwordIsValid = verifyPassword(password, user.password);
+    const result = await authService.login(email, password);
 
-    if (!passwordIsValid) {
-      return next(new AppError("Invalid email or password", 401));
-    }
+    // Set refresh token in HTTP-only cookie
+    res.cookie("refreshToken", result.refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    });
 
-    // Check if user is active
-    if (user.status !== "active") {
-      return next(new AppError("Your account is not active", 403));
-    }
-
-    // Generate JWT token
-    const token = generateToken(user.id, user.email, user.role);
-
-    // Update last login
-    user.last_login = new Date();
-    await user.save();
-
-    // Return user data and token
     res.json({
       status: "success",
       data: {
-        id: user.id,
-        email: user.email,
-        full_name: user.full_name,
-        role: user.role,
-        token,
+        user: result.user,
+        accessToken: result.accessToken,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.logout = async (req, res, next) => {
+  try {
+    if (req.userId) {
+      await authService.logout(req.userId);
+    }
+
+    // Clear refresh token cookie
+    res.cookie("refreshToken", "", {
+      httpOnly: true,
+      expires: new Date(0),
+    });
+
+    res.json({
+      status: "success",
+      message: "Logged out successfully",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.refreshToken = async (req, res, next) => {
+  try {
+    // Get refresh token from cookie or request body
+    const refreshToken = req.cookies.refreshToken || req.body.refreshToken;
+
+    if (!refreshToken) {
+      return next(new AppError("Refresh token is required", 400));
+    }
+
+    const result = await authService.refreshToken(refreshToken);
+
+    res.json({
+      status: "success",
+      data: {
+        accessToken: result.accessToken,
+        user: result.user,
       },
     });
   } catch (error) {
@@ -50,15 +77,11 @@ exports.login = async (req, res, next) => {
 };
 
 exports.validateToken = async (req, res) => {
-  // User data is already attached to req by auth middleware
+  // User is already attached by auth middleware
   res.json({
     status: "success",
     data: {
-      user: {
-        id: req.user.id,
-        email: req.user.email,
-        role: req.user.role,
-      },
+      user: req.user,
     },
   });
 };
