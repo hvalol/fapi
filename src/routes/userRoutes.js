@@ -12,7 +12,7 @@ const router = express.Router();
 router.use(authenticate);
 
 // Get all users (Admin only)
-router.get("/", authorize(["Admin"]), userController.getAllUsers);
+router.get("/", authorize("Admin"), userController.getAllUsers);
 
 // Get user by ID (Admin or own user)
 router.get("/:id", userController.getUserById);
@@ -21,7 +21,7 @@ router.get("/:id", userController.getUserById);
 router.post(
   "/",
   [
-    authorize(["Admin"]),
+    authorize("Admin"),
     body("email").isEmail().withMessage("Please provide a valid email"),
     body("password")
       .isLength({ min: 8 })
@@ -50,7 +50,7 @@ router.put(
 );
 
 // Delete user (Admin only)
-router.delete("/:id", authorize(["Admin"]), userController.deleteUser);
+router.delete("/:id", authorize("Admin"), userController.deleteUser);
 
 // Change password (own user)
 router.post(

@@ -28,8 +28,21 @@ const verifyPassword = (password, hashedPassword) => {
   return hash === calculatedHash;
 };
 
+// Generate API key for agents
+const generateApiKey = () => {
+  const prefix = "ag";
+  const randomPart = crypto.randomBytes(12).toString("hex");
+  return `${prefix}_${randomPart}`;
+};
+
+// Generate API secret for agents
+const generateApiSecret = () => {
+  return crypto.randomBytes(24).toString("hex");
+};
 module.exports = {
   generateToken,
   hashPassword,
   verifyPassword,
+  generateApiKey,
+  generateApiSecret,
 };

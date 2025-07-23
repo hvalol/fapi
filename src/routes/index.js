@@ -3,6 +3,7 @@ const express = require("express");
 const authRoutes = require("./authRoutes");
 const userRoutes = require("./userRoutes");
 const clientRoutes = require("./clientRoutes");
+const agentRoutes = require("./agentRoutes");
 
 const router = express.Router();
 
@@ -10,6 +11,7 @@ const router = express.Router();
 router.use("/auth", authRoutes);
 router.use("/users", userRoutes);
 router.use("/clients", clientRoutes);
+router.use("/agents", agentRoutes);
 
 // Add additional routes here as they're implemented
 

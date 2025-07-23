@@ -2,9 +2,11 @@
 const authService = require("./authService");
 const userService = require("./userService");
 const clientService = require("./clientService");
+const agentService = require("./agentService");
 
 module.exports = {
   authService,
   userService,
   clientService,
+  agentService,
 };

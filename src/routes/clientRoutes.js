@@ -12,7 +12,7 @@ const router = express.Router();
 router.use(authenticate);
 
 // Get all clients (Admin only)
-router.get("/", authorize(["Admin"]), clientController.getAllClients);
+router.get("/", authorize("Admin"), clientController.getAllClients);
 
 // Get client by ID (Admin or client admin of the specific client)
 router.get("/:id", clientController.getClientById);
@@ -21,7 +21,7 @@ router.get("/:id", clientController.getClientById);
 router.post(
   "/",
   [
-    authorize(["Admin"]),
+    authorize("Admin"),
     body("name").notEmpty().withMessage("Client name is required"),
     body("contact_email")
       .optional()
@@ -36,7 +36,7 @@ router.post(
 router.put(
   "/:id",
   [
-    authorize(["Admin"]),
+    authorize("Admin"),
     body("name")
       .optional()
       .notEmpty()
@@ -51,6 +51,6 @@ router.put(
 );
 
 // Delete client (Admin only)
-router.delete("/:id", authorize(["Admin"]), clientController.deleteClient);
+router.delete("/:id", authorize("Admin"), clientController.deleteClient);
 
 module.exports = router;
