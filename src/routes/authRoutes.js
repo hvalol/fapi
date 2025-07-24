@@ -11,7 +11,7 @@ const router = express.Router();
 router.post(
   "/login",
   [
-    body("email").isEmail().withMessage("Please provide a valid email"),
+    body("username").notEmpty().withMessage("Username is required"),
     body("password").notEmpty().withMessage("Password is required"),
     validateRequest,
   ],

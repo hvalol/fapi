@@ -1,4 +1,3 @@
-// src/services/clientService.js
 const { Client, User } = require("../models");
 const { AppError } = require("../middlewares/errorHandler");
 
@@ -23,7 +22,7 @@ class ClientService {
         {
           model: User,
           as: "users",
-          attributes: ["id", "email", "full_name", "role", "status"],
+          attributes: ["id", "username", "role", "status"],
           where: { role: "ClientAdmin" },
           required: false,
         },
@@ -42,7 +41,7 @@ class ClientService {
         {
           model: User,
           as: "users",
-          attributes: ["id", "email", "full_name", "role", "status"],
+          attributes: ["id", "username", "role", "status"],
           where: { role: "ClientAdmin" },
           required: false,
         },
@@ -62,8 +61,7 @@ class ClientService {
    * @returns {Object} Created client
    */
   async createClient(clientData) {
-    const { name, status, onboarding_date, contact_email, contact_phone } =
-      clientData;
+    const { name, status, onboarding_date } = clientData;
 
     // Check if client with same name already exists
     const existingClient = await Client.findOne({ where: { name } });
@@ -76,8 +74,6 @@ class ClientService {
       name,
       status: status || "pending",
       onboarding_date: onboarding_date || new Date(),
-      contact_email,
-      contact_phone,
     });
 
     return client;
@@ -96,8 +92,7 @@ class ClientService {
       throw new AppError("Client not found", 404);
     }
 
-    const { name, status, onboarding_date, contact_email, contact_phone } =
-      clientData;
+    const { name, status, onboarding_date } = clientData;
 
     // Check if name is being changed and if it's already in use
     if (name && name !== client.name) {
@@ -111,8 +106,6 @@ class ClientService {
     if (name) client.name = name;
     if (status) client.status = status;
     if (onboarding_date) client.onboarding_date = onboarding_date;
-    if (contact_email !== undefined) client.contact_email = contact_email;
-    if (contact_phone !== undefined) client.contact_phone = contact_phone;
 
     await client.save();
 

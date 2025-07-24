@@ -1,4 +1,3 @@
-// src/models/Client.js
 const { DataTypes } = require("sequelize");
 const sequelize = require("../config/database");
 
@@ -23,17 +22,6 @@ const Client = sequelize.define(
       type: DataTypes.DATE,
       allowNull: false,
       defaultValue: DataTypes.NOW,
-    },
-    contact_email: {
-      type: DataTypes.STRING,
-      allowNull: true,
-      validate: {
-        isEmail: true,
-      },
-    },
-    contact_phone: {
-      type: DataTypes.STRING,
-      allowNull: true,
     },
   },
   {

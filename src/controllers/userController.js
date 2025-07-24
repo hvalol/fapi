@@ -42,9 +42,8 @@ exports.getUserById = async (req, res, next) => {
 exports.createUser = async (req, res, next) => {
   try {
     const userData = {
-      email: req.body.email,
+      username: req.body.username,
       password: req.body.password,
-      full_name: req.body.full_name,
       role: req.body.role,
       status: req.body.status,
       client_id: req.body.client_id,
@@ -66,9 +65,8 @@ exports.createUser = async (req, res, next) => {
 exports.updateUser = async (req, res, next) => {
   try {
     const userData = {
-      email: req.body.email,
+      username: req.body.username,
       password: req.body.password,
-      full_name: req.body.full_name,
       role: req.body.role,
       status: req.body.status,
       client_id: req.body.client_id,

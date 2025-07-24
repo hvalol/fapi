@@ -1,4 +1,3 @@
-// src/models/User.js
 const { DataTypes } = require("sequelize");
 const sequelize = require("../config/database");
 
@@ -10,19 +9,12 @@ const User = sequelize.define(
       primaryKey: true,
       autoIncrement: true,
     },
-    email: {
+    username: {
       type: DataTypes.STRING,
       allowNull: false,
       unique: true,
-      validate: {
-        isEmail: true,
-      },
     },
     password: {
-      type: DataTypes.STRING,
-      allowNull: false,
-    },
-    full_name: {
       type: DataTypes.STRING,
       allowNull: false,
     },

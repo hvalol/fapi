@@ -73,7 +73,10 @@ exports.createAgent = async (req, res, next) => {
       status: req.body.status,
       can_create_subagent: req.body.can_create_subagent,
       currency: req.body.currency,
-      profile: req.body.profile,
+      profile: {
+        notes: req.body.profile?.notes,
+        timezone: req.body.profile?.timezone,
+      },
       settings: req.body.settings,
       commissions: req.body.commissions,
       user_id: req.body.user_id,
@@ -124,7 +127,10 @@ exports.updateAgent = async (req, res, next) => {
       status: req.body.status,
       can_create_subagent: req.body.can_create_subagent,
       currency: req.body.currency,
-      profile: req.body.profile,
+      profile: {
+        notes: req.body.profile?.notes,
+        timezone: req.body.profile?.timezone,
+      },
       settings: req.body.settings,
       user_id: req.body.user_id,
       max_agents: req.body.max_agents,

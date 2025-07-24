@@ -1,7 +1,6 @@
-// src/services/userService.js
 const { User, Client } = require("../models");
 const { AppError } = require("../middlewares/errorHandler");
-const { hashPassword } = require("../utils/authUtils");
+const { hashPassword, verifyPassword } = require("../utils/authUtils");
 
 /**
  * Service for user management operations
@@ -63,12 +62,12 @@ class UserService {
    * @returns {Object} Created user
    */
   async createUser(userData) {
-    const { email, password, full_name, role, status, client_id } = userData;
+    const { username, password, role, status, client_id } = userData;
 
-    // Check if email already exists
-    const existingUser = await User.findOne({ where: { email } });
+    // Check if username already exists
+    const existingUser = await User.findOne({ where: { username } });
     if (existingUser) {
-      throw new AppError("Email already in use", 400);
+      throw new AppError("Username already in use", 400);
     }
 
     // If client_id is provided, check if client exists
@@ -82,9 +81,8 @@ class UserService {
     // Create user
     const hashedPassword = hashPassword(password);
     const newUser = await User.create({
-      email,
+      username,
       password: hashedPassword,
-      full_name,
       role: role || "ClientAdmin",
       status: status || "active",
       client_id,
@@ -108,13 +106,13 @@ class UserService {
       throw new AppError("User not found", 404);
     }
 
-    const { email, password, full_name, role, status, client_id } = userData;
+    const { username, password, role, status, client_id } = userData;
 
-    // Check if email is being changed and if it's already in use
-    if (email && email !== user.email) {
-      const existingUser = await User.findOne({ where: { email } });
+    // Check if username is being changed and if it's already in use
+    if (username && username !== user.username) {
+      const existingUser = await User.findOne({ where: { username } });
       if (existingUser) {
-        throw new AppError("Email already in use", 400);
+        throw new AppError("Username already in use", 400);
       }
     }
 
@@ -127,9 +125,8 @@ class UserService {
     }
 
     // Update user fields
-    if (email) user.email = email;
+    if (username) user.username = username;
     if (password) user.password = hashPassword(password);
-    if (full_name) user.full_name = full_name;
     if (role) user.role = role;
     if (status) user.status = status;
     if (client_id !== undefined) user.client_id = client_id;
@@ -175,7 +172,7 @@ class UserService {
     }
 
     // Verify current password
-    const isPasswordValid = await user.comparePassword(currentPassword);
+    const isPasswordValid = verifyPassword(currentPassword, user.password);
     if (!isPasswordValid) {
       throw new AppError("Current password is incorrect", 401);
     }

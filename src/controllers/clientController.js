@@ -42,8 +42,6 @@ exports.createClient = async (req, res, next) => {
       name: req.body.name,
       status: req.body.status,
       onboarding_date: req.body.onboarding_date,
-      contact_email: req.body.contact_email,
-      contact_phone: req.body.contact_phone,
     };
 
     const client = await clientService.createClient(clientData);
@@ -65,8 +63,6 @@ exports.updateClient = async (req, res, next) => {
       name: req.body.name,
       status: req.body.status,
       onboarding_date: req.body.onboarding_date,
-      contact_email: req.body.contact_email,
-      contact_phone: req.body.contact_phone,
     };
 
     const client = await clientService.updateClient(req.params.id, clientData);

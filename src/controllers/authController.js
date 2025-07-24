@@ -4,13 +4,13 @@ const { AppError } = require("../middlewares/errorHandler");
 
 exports.login = async (req, res, next) => {
   try {
-    const { email, password } = req.body;
+    const { username, password } = req.body;
 
-    if (!email || !password) {
-      return next(new AppError("Please provide email and password", 400));
+    if (!username || !password) {
+      return next(new AppError("Please provide username and password", 400));
     }
 
-    const result = await authService.login(email, password);
+    const result = await authService.login(username, password);
 
     // Set refresh token in HTTP-only cookie
     res.cookie("refreshToken", result.refreshToken, {

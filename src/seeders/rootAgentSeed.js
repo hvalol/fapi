@@ -16,7 +16,6 @@ module.exports = async () => {
       name: "Fabulous Platform",
       status: "active",
       onboarding_date: new Date(),
-      contact_email: "platform@fabulous.com",
     });
 
     console.log("Platform client created successfully");
@@ -35,17 +34,17 @@ module.exports = async () => {
       code: "FABROOT",
       parent_id: null,
       level: 0,
-      client_id: platformClient.id, // Now this reference exists
+      client_id: platformClient.id,
       status: "active",
       can_create_subagent: true,
       currency: "USD",
     });
 
-    // Create root agent profile
+    // Create root agent profile (simplified)
     await AgentProfile.create({
       agent_id: rootAgent.id,
-      email: "platform@fabulous.com",
       timezone: "UTC",
+      notes: "Platform root agent",
     });
 
     // Create root agent settings

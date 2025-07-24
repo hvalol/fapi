@@ -22,11 +22,14 @@ router.post(
   "/",
   [
     authorize("Admin"),
-    body("email").isEmail().withMessage("Please provide a valid email"),
+    body("username").notEmpty().withMessage("Username is required"),
     body("password")
       .isLength({ min: 8 })
       .withMessage("Password must be at least 8 characters"),
-    body("full_name").notEmpty().withMessage("Full name is required"),
+    body("role")
+      .optional()
+      .isIn(["Admin", "ClientAdmin", "Agent", "SubAgent"])
+      .withMessage("Invalid role"),
     validateRequest,
   ],
   userController.createUser
@@ -36,14 +39,18 @@ router.post(
 router.put(
   "/:id",
   [
-    body("email")
+    body("username")
       .optional()
-      .isEmail()
-      .withMessage("Please provide a valid email"),
+      .notEmpty()
+      .withMessage("Username cannot be empty"),
     body("password")
       .optional()
       .isLength({ min: 8 })
       .withMessage("Password must be at least 8 characters"),
+    body("role")
+      .optional()
+      .isIn(["Admin", "ClientAdmin", "Agent", "SubAgent"])
+      .withMessage("Invalid role"),
     validateRequest,
   ],
   userController.updateUser

@@ -1,4 +1,3 @@
-// src/services/authService.js
 const jwt = require("jsonwebtoken");
 const { User } = require("../models");
 const { AppError } = require("../middlewares/errorHandler");
@@ -11,23 +10,23 @@ const jwtConfig = require("../config/jwt");
 class AuthService {
   /**
    * Authenticate a user and generate access and refresh tokens
-   * @param {string} email - User email
+   * @param {string} username - User username
    * @param {string} password - User password
    * @returns {Object} User data and tokens
    */
-  async login(email, password) {
-    // Find user by email
-    const user = await User.findOne({ where: { email } });
+  async login(username, password) {
+    // Find user by username
+    const user = await User.findOne({ where: { username } });
 
     if (!user) {
-      throw new AppError("Invalid email or password", 401);
+      throw new AppError("Invalid username or password", 401);
     }
 
     // Verify password
     const passwordIsValid = verifyPassword(password, user.password);
 
     if (!passwordIsValid) {
-      throw new AppError("Invalid email or password", 401);
+      throw new AppError("Invalid username or password", 401);
     }
 
     // Check if user is active
@@ -46,9 +45,9 @@ class AuthService {
     return {
       user: {
         id: user.id,
-        email: user.email,
-        full_name: user.full_name,
+        username: user.username,
         role: user.role,
+        client_id: user.client_id,
       },
       accessToken,
       refreshToken,
@@ -62,7 +61,12 @@ class AuthService {
    */
   generateAccessToken(user) {
     return jwt.sign(
-      { id: user.id, email: user.email, role: user.role },
+      {
+        id: user.id,
+        username: user.username,
+        role: user.role,
+        client_id: user.client_id,
+      },
       jwtConfig.secret,
       { expiresIn: jwtConfig.expiresIn }
     );
@@ -121,9 +125,9 @@ class AuthService {
         accessToken,
         user: {
           id: user.id,
-          email: user.email,
-          full_name: user.full_name,
+          username: user.username,
           role: user.role,
+          client_id: user.client_id,
         },
       };
     } catch (error) {
@@ -137,6 +141,32 @@ class AuthService {
 
       throw new AppError("Invalid refresh token", 401);
     }
+  }
+
+  /**
+   * Validate the user's access token
+   * @param {number} userId - User ID from token
+   * @returns {Object} User data
+   */
+  async validateToken(userId) {
+    const user = await User.findByPk(userId, {
+      attributes: { exclude: ["password"] },
+    });
+
+    if (!user) {
+      throw new AppError("User not found", 401);
+    }
+
+    if (user.status !== "active") {
+      throw new AppError("User account is not active", 403);
+    }
+
+    return {
+      id: user.id,
+      username: user.username,
+      role: user.role,
+      client_id: user.client_id,
+    };
   }
 
   /**

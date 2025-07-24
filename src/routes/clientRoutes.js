@@ -23,10 +23,10 @@ router.post(
   [
     authorize("Admin"),
     body("name").notEmpty().withMessage("Client name is required"),
-    body("contact_email")
+    body("status")
       .optional()
-      .isEmail()
-      .withMessage("Please provide a valid email"),
+      .isIn(["active", "inactive", "pending"])
+      .withMessage("Invalid status"),
     validateRequest,
   ],
   clientController.createClient
@@ -41,10 +41,10 @@ router.put(
       .optional()
       .notEmpty()
       .withMessage("Client name cannot be empty"),
-    body("contact_email")
+    body("status")
       .optional()
-      .isEmail()
-      .withMessage("Please provide a valid email"),
+      .isIn(["active", "inactive", "pending"])
+      .withMessage("Invalid status"),
     validateRequest,
   ],
   clientController.updateClient

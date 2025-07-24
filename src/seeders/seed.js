@@ -23,7 +23,7 @@ const seedDatabase = async () => {
     const client = await Client.create({
       name: "Demo Casino",
       status: "active",
-      contact_email: "contact@democasino.com",
+      onboarding_date: new Date(),
     });
 
     // 3. Create client's agent representation
@@ -38,11 +38,11 @@ const seedDatabase = async () => {
       currency: "USD",
     });
 
-    // Create client agent profile
+    // Create client agent profile (simplified)
     await AgentProfile.create({
       agent_id: clientAgent.id,
-      email: "agent@democasino.com",
       timezone: "UTC",
+      notes: "Main demo casino agent",
     });
 
     // Create client agent settings
@@ -65,18 +65,16 @@ const seedDatabase = async () => {
 
     // 4. Create admin user
     await User.create({
-      email: "admin@fabulous.com",
+      username: "admin",
       password: hashPassword("Admin123!"),
-      full_name: "System Administrator",
       role: "Admin",
       status: "active",
     });
 
     // 5. Create client admin user
     await User.create({
-      email: "client@democasino.com",
+      username: "client_demo",
       password: hashPassword("Client123!"),
-      full_name: "Demo Client Admin",
       role: "ClientAdmin",
       status: "active",
       client_id: client.id,
@@ -96,8 +94,8 @@ const seedDatabase = async () => {
 
     await AgentProfile.create({
       agent_id: level2Agent1.id,
-      email: "east@democasino.com",
       timezone: "America/New_York",
+      notes: "East region management",
     });
 
     await AgentSettings.create({
@@ -129,8 +127,8 @@ const seedDatabase = async () => {
 
     await AgentProfile.create({
       agent_id: level2Agent2.id,
-      email: "west@democasino.com",
       timezone: "America/Los_Angeles",
+      notes: "West region management",
     });
 
     await AgentSettings.create({
@@ -163,8 +161,8 @@ const seedDatabase = async () => {
 
     await AgentProfile.create({
       agent_id: level3Agent1.id,
-      email: "nyc@democasino.com",
       timezone: "America/New_York",
+      notes: "New York City operations",
     });
 
     await AgentSettings.create({
@@ -196,8 +194,8 @@ const seedDatabase = async () => {
 
     await AgentProfile.create({
       agent_id: level3Agent2.id,
-      email: "boston@democasino.com",
       timezone: "America/New_York",
+      notes: "Boston operations",
     });
 
     await AgentSettings.create({
@@ -230,8 +228,8 @@ const seedDatabase = async () => {
 
     await AgentProfile.create({
       agent_id: inactiveAgent.id,
-      email: "inactive@democasino.com",
       timezone: "UTC",
+      notes: "Inactive test agent",
     });
 
     await AgentSettings.create({
@@ -254,7 +252,7 @@ const seedDatabase = async () => {
     const secondClient = await Client.create({
       name: "VIP Casino",
       status: "active",
-      contact_email: "contact@vipcasino.com",
+      onboarding_date: new Date(),
     });
 
     const secondClientAgent = await Agent.create({
@@ -270,8 +268,8 @@ const seedDatabase = async () => {
 
     await AgentProfile.create({
       agent_id: secondClientAgent.id,
-      email: "agent@vipcasino.com",
       timezone: "Europe/London",
+      notes: "VIP casino main agent",
     });
 
     await AgentSettings.create({
@@ -292,9 +290,8 @@ const seedDatabase = async () => {
 
     // 10. Create a user for the second client
     await User.create({
-      email: "admin@vipcasino.com",
+      username: "admin_vip",
       password: hashPassword("Vip123!"),
-      full_name: "VIP Casino Admin",
       role: "ClientAdmin",
       status: "active",
       client_id: secondClient.id,

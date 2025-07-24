@@ -40,6 +40,9 @@ router.post(
     body("name").notEmpty().withMessage("Agent name is required"),
     body("code").notEmpty().withMessage("Agent code is required"),
     body("client_id").isInt().withMessage("Client ID must be an integer"),
+    // Updated profile validation - removed email, phone, address, contact_person
+    body("profile.notes").optional(),
+    body("profile.timezone").optional(),
     validateRequest,
   ],
   agentController.createAgent
@@ -48,7 +51,13 @@ router.post(
 // Update agent (Admin and ClientAdmin)
 router.put(
   "/:id",
-  authorize("Admin", "ClientAdmin"),
+  [
+    authorize("Admin", "ClientAdmin"),
+    // Updated profile validation - removed email, phone, address, contact_person
+    body("profile.notes").optional(),
+    body("profile.timezone").optional(),
+    validateRequest,
+  ],
   agentController.updateAgent
 );
 
