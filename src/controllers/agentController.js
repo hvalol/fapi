@@ -72,7 +72,8 @@ exports.createAgent = async (req, res, next) => {
       client_id: req.body.client_id,
       status: req.body.status,
       can_create_subagent: req.body.can_create_subagent,
-      currency: req.body.currency,
+      currencies: req.body.currencies,
+      default_currency: req.body.default_currency,
       profile: {
         notes: req.body.profile?.notes,
         timezone: req.body.profile?.timezone,
@@ -126,7 +127,8 @@ exports.updateAgent = async (req, res, next) => {
       code: req.body.code,
       status: req.body.status,
       can_create_subagent: req.body.can_create_subagent,
-      currency: req.body.currency,
+      currencies: req.body.currencies,
+      default_currency: req.body.default_currency,
       profile: {
         notes: req.body.profile?.notes,
         timezone: req.body.profile?.timezone,
@@ -220,13 +222,17 @@ exports.getAgentHierarchy = async (req, res, next) => {
   try {
     const rootId = req.query.rootId ? parseInt(req.query.rootId) : null;
     let clientId = req.query.clientId ? parseInt(req.query.clientId) : null;
-
+    let status = req.query.status ? req.query.status : "active";
     // If user is ClientAdmin, restrict to their client
     if (req.user.role === "ClientAdmin") {
       clientId = req.user.client_id;
     }
 
-    const hierarchy = await agentService.getAgentHierarchy(rootId, clientId);
+    const hierarchy = await agentService.getAgentHierarchy(
+      rootId,
+      clientId,
+      status
+    );
 
     res.json({
       status: "success",

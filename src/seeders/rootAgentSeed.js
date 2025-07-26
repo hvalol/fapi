@@ -37,7 +37,8 @@ module.exports = async () => {
       client_id: platformClient.id,
       status: "active",
       can_create_subagent: true,
-      currency: "USD",
+      currencies: ["USD", "EUR", "JPY"], // Supporting multiple currencies
+      default_currency: "USD",
     });
 
     // Create root agent profile (simplified)

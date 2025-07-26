@@ -14,12 +14,21 @@ const apiRoutes = require("./routes");
 const app = express();
 
 // Middleware
+// app.use(
+//   cors({
+//     origin: process.env.CORS_ORIGIN || "*",
+//     credentials: true, // Allow cookies to be sent across domains
+//   })
+// );
+
+// Configure CORS middleware
 app.use(
   cors({
-    origin: process.env.CORS_ORIGIN || "*",
-    credentials: true, // Allow cookies to be sent across domains
+    origin: process.env.FRONTEND_URL || "http://localhost:3000",
+    credentials: true, // Important for cookies
   })
 );
+
 app.use(helmet());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));

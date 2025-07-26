@@ -21,9 +21,6 @@ const AgentSettings = sequelize.define(
     callback_url: {
       type: DataTypes.STRING,
       allowNull: true,
-      validate: {
-        isUrl: true,
-      },
     },
     ip_whitelist: {
       type: DataTypes.TEXT,

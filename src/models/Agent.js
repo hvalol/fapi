@@ -1,4 +1,6 @@
 // src/models/Agent.js
+// Currency should be many, and it is for allowing kinds of currencies for that agent
+
 const { DataTypes } = require("sequelize");
 const sequelize = require("../config/database");
 
@@ -42,7 +44,25 @@ const Agent = sequelize.define(
       allowNull: false,
       defaultValue: false,
     },
-    currency: {
+    currencies: {
+      type: DataTypes.TEXT,
+      allowNull: false,
+      defaultValue: JSON.stringify(["USD"]),
+      get() {
+        const rawValue = this.getDataValue("currencies");
+        return rawValue ? JSON.parse(rawValue) : ["USD"];
+      },
+      set(value) {
+        if (Array.isArray(value)) {
+          this.setDataValue("currencies", JSON.stringify(value));
+        } else if (typeof value === "string") {
+          this.setDataValue("currencies", JSON.stringify([value]));
+        } else {
+          this.setDataValue("currencies", JSON.stringify(["USD"]));
+        }
+      },
+    },
+    default_currency: {
       type: DataTypes.STRING,
       allowNull: false,
       defaultValue: "USD",

@@ -73,12 +73,67 @@ class AgentService {
   }
 
   /**
+   * Get children for an agent, with optional recursion
+   * @param {number} parentId - Parent agent ID
+   * @param {boolean} recursive - Whether to fetch all descendants
+   * @param {number} maxDepth - Maximum depth to traverse
+   * @param {number} currentDepth - Current depth in the hierarchy
+   * @returns {Array} Children agents
+   */
+  async getAgentChildren(
+    parentId,
+    recursive = false,
+    maxDepth = 5,
+    currentDepth = 0
+  ) {
+    // Base case for recursion - stop if we've reached max depth
+    if (currentDepth >= maxDepth) {
+      return [];
+    }
+
+    // Find direct children with basic info
+    const children = await Agent.findAll({
+      where: { parent_id: parentId },
+      include: [
+        { model: AgentProfile, as: "profile" },
+        {
+          model: AgentSettings,
+          as: "settings",
+          attributes: { exclude: ["api_secret"] },
+        },
+        { model: AgentCommission, as: "commissions" },
+      ],
+    });
+
+    // If not recursive, return just the direct children
+    if (!recursive || children.length === 0) {
+      return children.map((child) => child.toJSON());
+    }
+
+    // For recursive calls, map through each child and get its children
+    const childrenWithDescendants = [];
+    for (const child of children) {
+      const childObj = child.toJSON();
+      childObj.children = await this.getAgentChildren(
+        child.id,
+        true,
+        maxDepth,
+        currentDepth + 1
+      );
+      childrenWithDescendants.push(childObj);
+    }
+
+    return childrenWithDescendants;
+  }
+
+  /**
    * Get agent by ID
    * @param {number} id - Agent ID
    * @param {Object} options - Additional options
    * @returns {Object} Agent data
    */
   async getAgentById(id, options = {}) {
+    // Base include for main agent
     const include = [
       { model: AgentProfile, as: "profile" },
       {
@@ -91,29 +146,52 @@ class AgentService {
       { model: User, as: "user", attributes: ["id", "username"] },
     ];
 
-    // Include parent agent if exists
+    // Include parent agent with its basic profile
     include.push({
       model: Agent,
       as: "parent",
       include: [{ model: AgentProfile, as: "profile" }],
     });
 
-    // Include children agents if requested
-    if (options.includeChildren) {
-      include.push({
-        model: Agent,
-        as: "children",
-        include: [{ model: AgentProfile, as: "profile" }],
-      });
-    }
-
+    // Find the agent with its direct relations
+    const startTime = Date.now();
     const agent = await Agent.findByPk(id, { include });
+    const queryTime = Date.now() - startTime;
+
+    if (queryTime > 1000) {
+      // Log if query takes more than 1 second
+      console.warn(
+        `Slow query detected: getAgentById(${id}) took ${queryTime}ms`
+      );
+    }
 
     if (!agent) {
       throw new AppError("Agent not found", 404);
     }
 
-    return agent;
+    // Convert to plain object FIRST
+    const agentObj = agent.toJSON();
+
+    // If children are requested, fetch them separately rather than in the main query
+    if (options.includeChildren) {
+      const maxDepth = options.maxDepth || 2; // Default to 2 levels
+      const recursive = options.recursive !== false; // Default to true
+
+      try {
+        agentObj.children = await this.getAgentChildren(
+          id,
+          recursive,
+          maxDepth,
+          0,
+          options.clientId || agent.client_id
+        );
+      } catch (error) {
+        console.error(`Error getting agent details for ID ${id}:`, error);
+        throw error;
+      }
+    }
+
+    return agentObj;
   }
 
   /**
@@ -129,7 +207,8 @@ class AgentService {
       client_id,
       status,
       can_create_subagent,
-      currency,
+      currencies,
+      default_currency,
       profile,
       settings,
       commissions,
@@ -209,6 +288,19 @@ class AgentService {
         throw new AppError("User is already linked to another agent", 400);
       }
     }
+    // Process currencies
+    let processedCurrencies = ["USD"];
+    let processedDefaultCurrency = "USD";
+
+    if (Array.isArray(currencies) && currencies.length > 0) {
+      processedCurrencies = currencies;
+    }
+
+    if (default_currency && processedCurrencies.includes(default_currency)) {
+      processedDefaultCurrency = default_currency;
+    } else if (processedCurrencies.length > 0) {
+      processedDefaultCurrency = processedCurrencies[0];
+    }
 
     // Use transaction to ensure data consistency
     const transaction = await sequelize.transaction();
@@ -224,7 +316,8 @@ class AgentService {
           client_id,
           status: status || "active",
           can_create_subagent: can_create_subagent || false,
-          currency: currency || "USD",
+          currencies: processedCurrencies,
+          default_currency: processedDefaultCurrency,
           user_id,
           max_agents: max_agents || null,
           max_level: max_level || null,
@@ -355,7 +448,8 @@ class AgentService {
       code,
       status,
       can_create_subagent,
-      currency,
+      currencies,
+      default_currency,
       profile,
       settings,
       user_id,
@@ -393,6 +487,32 @@ class AgentService {
       }
     }
 
+    // Process currencies
+    let processedCurrencies = agent.currencies;
+    let processedDefaultCurrency = agent.default_currency;
+
+    if (Array.isArray(currencies)) {
+      processedCurrencies = currencies.length > 0 ? currencies : ["USD"];
+    }
+
+    if (default_currency) {
+      // Check if the default currency is in the list of currencies
+      if (processedCurrencies.includes(default_currency)) {
+        processedDefaultCurrency = default_currency;
+      } else {
+        throw new AppError(
+          "Default currency must be in the list of currencies",
+          400
+        );
+      }
+    } else if (
+      processedCurrencies !== agent.currencies &&
+      !processedCurrencies.includes(agent.default_currency)
+    ) {
+      // If currencies changed and no longer includes old default, set a new default
+      processedDefaultCurrency = processedCurrencies[0];
+    }
+
     // Use transaction to ensure data consistency
     const transaction = await sequelize.transaction();
 
@@ -403,7 +523,10 @@ class AgentService {
       if (status) agent.status = status;
       if (can_create_subagent !== undefined)
         agent.can_create_subagent = can_create_subagent;
-      if (currency) agent.currency = currency;
+      if (processedCurrencies !== undefined)
+        agent.currencies = processedCurrencies;
+      if (processedDefaultCurrency !== undefined)
+        agent.default_currency = processedDefaultCurrency;
       if (user_id !== undefined) agent.user_id = user_id;
       if (max_agents !== undefined) agent.max_agents = max_agents;
       if (max_level !== undefined) agent.max_level = max_level;
@@ -488,42 +611,193 @@ class AgentService {
   }
 
   /**
+   * Update agent commissions
+   * @param {number} id - Agent ID
+   * @param {Array} commissions - Commission data
+   * @returns {Object} Updated agent
+   */
+  async updateAgentCommissions(id, commissions) {
+    const agent = await Agent.findByPk(id);
+
+    if (!agent) {
+      throw new AppError("Agent not found", 404);
+    }
+
+    const transaction = await sequelize.transaction();
+
+    try {
+      // Delete existing commissions if replacing all
+      await AgentCommission.destroy({
+        where: { agent_id: id },
+        transaction,
+      });
+
+      // Create new commissions
+      for (const commission of commissions) {
+        await AgentCommission.create(
+          {
+            agent_id: id,
+            commission_type: commission.commission_type || "revenue_share",
+            rate: commission.rate,
+            provider_id: commission.provider_id,
+            game_type: commission.game_type,
+            min_amount: commission.min_amount,
+            max_amount: commission.max_amount,
+            settlement_cycle: commission.settlement_cycle || "monthly",
+            effective_from: commission.effective_from || new Date(),
+            effective_to: commission.effective_to,
+          },
+          { transaction }
+        );
+      }
+
+      await transaction.commit();
+
+      // Return updated agent with associations
+      return this.getAgentById(id);
+    } catch (error) {
+      await transaction.rollback();
+      throw error;
+    }
+  }
+
+  /**
+   * Deactivate an agent
+   * @param {number} id - Agent ID
+   * @returns {boolean} Success flag
+   */
+  async deactivateAgent(id) {
+    const agent = await Agent.findByPk(id);
+
+    if (!agent) {
+      throw new AppError("Agent not found", 404);
+    }
+
+    // Check if agent has active children
+    const activeChildren = await Agent.count({
+      where: {
+        parent_id: id,
+        status: "active",
+      },
+    });
+
+    if (activeChildren > 0) {
+      throw new AppError("Cannot deactivate agent with active sub-agents", 400);
+    }
+
+    // Soft delete by setting status to inactive
+    agent.status = "inactive";
+    await agent.save();
+
+    return true;
+  }
+
+  /**
    * Get agent hierarchy (tree structure)
    * @param {number} rootId - Root agent ID (if null, get all hierarchies)
    * @param {number} clientId - Client ID (required if rootId is null)
    * @returns {Array} Agent hierarchies
    */
-  async getAgentHierarchy(rootId, clientId) {
-    let rootAgents;
+  async getAgentHierarchy(rootId, clientId, status = "active") {
+    let rootAgents = [];
 
-    if (rootId) {
-      // Get specific agent tree
-      const rootAgent = await Agent.findByPk(rootId);
-      if (!rootAgent) {
-        throw new AppError("Agent not found", 404);
+    try {
+      // If rootId is provided, ensure it belongs to the client if clientId is also provided
+      if (rootId && clientId) {
+        const rootAgent = await Agent.findOne({
+          where: {
+            id: rootId,
+            client_id: clientId,
+            status,
+          },
+        });
+
+        if (!rootAgent) {
+          throw new AppError(
+            `Agent with ID ${rootId} not found for client ID ${clientId}`,
+            404
+          );
+        }
+        rootAgents = [rootAgent];
       }
-      rootAgents = [rootAgent];
-    } else if (clientId) {
-      // Get all root agents for a client
-      rootAgents = await Agent.findAll({
-        where: {
-          client_id: clientId,
-          parent_id: null,
-        },
-      });
-    } else {
-      throw new AppError("Either rootId or clientId is required", 400);
+      // If only rootId is provided (Admin access)
+      else if (rootId) {
+        const rootAgent = await Agent.findByPk(rootId);
+        if (!rootAgent || rootAgent.status !== status) {
+          throw new AppError(
+            `Agent with ID ${rootId} not found  or not ${status}`,
+            404
+          );
+        }
+        rootAgents = [rootAgent];
+      }
+      // If only clientId is provided
+      else if (clientId) {
+        // Get all agents for this client that could be root agents
+        // First, try to find agents that have parent_id = null
+        rootAgents = await Agent.findAll({
+          where: {
+            client_id: clientId,
+            parent_id: null,
+            status,
+          },
+        });
+
+        // If no root agents found for this client
+        if (rootAgents.length === 0) {
+          // Try to find any agents for this client
+          const allClientAgents = await Agent.findAll({
+            where: {
+              client_id: clientId,
+            },
+            order: [["level", "ASC"]], // Get lowest level first
+          });
+
+          if (allClientAgents.length > 0) {
+            // Get minimum level among these agents
+            const minLevel = allClientAgents[0].level;
+
+            // Filter to only include agents at this minimum level
+            rootAgents = allClientAgents.filter(
+              (agent) => agent.level === minLevel
+            );
+
+            // If there are still no agents after filtering, just use the first one
+            if (rootAgents.length === 0) {
+              rootAgents = [allClientAgents[0]];
+            }
+          }
+        }
+      }
+      // No parameters provided - this should only be allowed for Admin users
+      // This block is executed by default for Admin users without specific filtering
+      else {
+        // For security, we'll require at least one parameter to be provided
+        throw new AppError("Either rootId or clientId must be provided", 400);
+      }
+
+      // If still no agents found, return empty hierarchy
+      if (!rootAgents || rootAgents.length === 0) {
+        return [];
+      }
+
+      // Build hierarchy for each root agent
+      const hierarchy = [];
+      for (const rootAgent of rootAgents) {
+        // Only include agents from the same client_id in the hierarchy
+        const agentTree = await this.buildAgentTree(
+          rootAgent.id,
+          clientId,
+          status
+        );
+        hierarchy.push(agentTree);
+      }
+
+      return hierarchy;
+    } catch (error) {
+      console.error("Error getting agent hierarchy:", error);
+      throw error;
     }
-
-    // Build hierarchy for each root agent
-    const hierarchy = [];
-
-    for (const rootAgent of rootAgents) {
-      const agentTree = await this.buildAgentTree(rootAgent.id);
-      hierarchy.push(agentTree);
-    }
-
-    return hierarchy;
   }
 
   /**
@@ -532,47 +806,100 @@ class AgentService {
    * @returns {Object} Agent tree
    * @private
    */
-  async buildAgentTree(agentId) {
-    const agent = await Agent.findByPk(agentId, {
-      include: [
-        { model: AgentProfile, as: "profile" },
-        { model: User, as: "user", attributes: ["id", "username"] },
-      ],
-      attributes: [
-        "id",
-        "name",
-        "code",
-        "level",
-        "status",
-        "can_create_subagent",
-      ],
+  async buildAgentTree(agentId, clientId = null, status = "active") {
+    try {
+      // Get agent with all its details
+      let agentQuery = {
+        where: { id: agentId },
+        include: [
+          { model: AgentCommission, as: "commissions" },
+          { model: AgentSettings, as: "settings" },
+          { model: AgentProfile, as: "profile" },
+        ],
+      };
+
+      // If clientId is provided, ensure we only get agents for that client
+      if (clientId) {
+        agentQuery.where.client_id = clientId;
+      }
+
+      // Add status filter
+      if (status) {
+        agentQuery.where.status = status;
+      }
+
+      const agent = await Agent.findOne(agentQuery);
+
+      if (!agent) {
+        return null;
+      }
+
+      // Convert to plain object to avoid circular references
+      const agentObj = agent.toJSON();
+
+      // Find all children
+      let childrenQuery = { where: { parent_id: agentId } };
+
+      // If clientId is provided, ensure we only get children for that client
+      if (clientId) {
+        childrenQuery.where.client_id = clientId;
+      }
+
+      // Add status filter for children too
+      if (status) {
+        childrenQuery.where.status = status;
+      }
+
+      const children = await Agent.findAll(childrenQuery);
+
+      // Add children recursively
+      agentObj.children = [];
+      for (const child of children) {
+        const childTree = await this.buildAgentTree(child.id, clientId);
+        if (childTree) {
+          agentObj.children.push(childTree);
+        }
+      }
+
+      return agentObj;
+    } catch (error) {
+      console.error(`Error building agent tree for agent ${agentId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Regenerate API credentials for an agent
+   * @param {number} id - Agent ID
+   * @returns {Object} New API credentials
+   */
+  async regenerateApiCredentials(id) {
+    const agent = await Agent.findByPk(id, {
+      include: [{ model: AgentSettings, as: "settings" }],
     });
 
     if (!agent) {
-      return null;
+      throw new AppError("Agent not found", 404);
     }
 
-    // Get children
-    const children = await Agent.findAll({
-      where: { parent_id: agentId },
-    });
-
-    // Recursively build children trees
-    const childrenTrees = [];
-
-    for (const child of children) {
-      const childTree = await this.buildAgentTree(child.id);
-      childrenTrees.push(childTree);
+    if (!agent.settings) {
+      throw new AppError("Agent settings not found", 404);
     }
 
-    // Convert to plain object and add children
-    const agentTree = agent.toJSON();
-    agentTree.children = childrenTrees;
+    // Generate new API key and secret
+    const api_key = generateApiKey();
+    const api_secret = generateApiSecret();
 
-    return agentTree;
+    // Update settings
+    agent.settings.api_key = api_key;
+    agent.settings.api_secret = api_secret;
+    await agent.settings.save();
+
+    return {
+      api_key,
+      api_secret,
+    };
   }
-
-  // Other methods remain unchanged
 }
 
 module.exports = new AgentService();
