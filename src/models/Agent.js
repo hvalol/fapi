@@ -83,8 +83,4 @@ const Agent = sequelize.define(
   }
 );
 
-// Self-referencing relationship for hierarchy
-Agent.belongsTo(Agent, { as: "parent", foreignKey: "parent_id" });
-Agent.hasMany(Agent, { as: "children", foreignKey: "parent_id" });
-
 module.exports = Agent;
