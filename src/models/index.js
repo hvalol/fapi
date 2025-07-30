@@ -59,6 +59,10 @@ ClientTransaction.belongsTo(ClientBilling, {
 Client.hasOne(ClientDeposit, { foreignKey: "client_id", as: "deposit" });
 ClientDeposit.belongsTo(Client, { foreignKey: "client_id" });
 
+// User-Agent Association (Each agent can have a user account)
+Agent.belongsTo(User, { foreignKey: "user_id", as: "user" });
+User.hasOne(Agent, { foreignKey: "user_id", as: "agent" });
+
 module.exports = {
   sequelize,
   User,
