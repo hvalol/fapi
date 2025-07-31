@@ -215,11 +215,12 @@ class ClientBillingService {
     const now = new Date();
     const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
+    // Only count positive amounts (payments)
     return client.transactions
       .filter(
         (t) => t.type === "Payment" && new Date(t.date) >= firstDayOfMonth
       )
-      .reduce((total, t) => total + parseFloat(t.amount), 0);
+      .reduce((total, t) => total + Math.abs(parseFloat(t.amount)), 0);
   }
 
   /**
@@ -247,7 +248,7 @@ class ClientBillingService {
       const currentBalance = lastTransaction
         ? lastTransaction.balance_after
         : 0;
-      const newBalance = currentBalance - parseFloat(chargeData.amount);
+      const newBalance = currentBalance + parseFloat(chargeData.amount); // Add because charges increase what client owes
 
       // Create the transaction
       await ClientTransaction.create(
@@ -340,7 +341,7 @@ class ClientBillingService {
       const currentBalance = lastTransaction
         ? lastTransaction.balance_after
         : 0;
-      const newBalance = currentBalance + parseFloat(paymentData.amount);
+      const newBalance = currentBalance - parseFloat(paymentData.amount); // Subtract because payments reduce what client owes
 
       // Create the payment transaction
       await ClientTransaction.create(

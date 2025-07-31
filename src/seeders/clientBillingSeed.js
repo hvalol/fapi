@@ -8,6 +8,12 @@ const {
 
 /**
  * Seed client billing data for development
+ *
+ * Financial conventions:
+ * 1. Positive balance means client owes money
+ * 2. Charges (Share Due, Penalty, etc.) INCREASE balance (positive amount)
+ * 3. Payments DECREASE balance (negative amount)
+ * 4. Deposits are treated as charges (increasing balance)
  */
 const seedClientBilling = async () => {
   try {
@@ -48,15 +54,17 @@ const seedClientBilling = async () => {
         // Generate random billing amounts
         const totalGGR = Math.floor(Math.random() * 100000) + 10000;
         const sharePercentage = 20 + Math.floor(Math.random() * 20); // 20-40%
-        const shareAmount = ((totalGGR * sharePercentage) / 100).toFixed(2);
-        const platformFee = (shareAmount * 0.05).toFixed(2); // 5% platform fee
+        const shareAmount = parseFloat(
+          ((totalGGR * sharePercentage) / 100).toFixed(2)
+        );
+        const platformFee = parseFloat((shareAmount * 0.05).toFixed(2)); // 5% platform fee
         const adjustments =
-          Math.random() > 0.7 ? (Math.random() * 1000 - 500).toFixed(2) : 0; // Occasional adjustments
-        const finalAmount = (
-          parseFloat(shareAmount) -
-          parseFloat(platformFee) +
-          parseFloat(adjustments)
-        ).toFixed(2);
+          Math.random() > 0.7
+            ? parseFloat((Math.random() * 1000 - 500).toFixed(2))
+            : 0; // Occasional adjustments
+        const finalAmount = parseFloat(
+          (shareAmount - platformFee + adjustments).toFixed(2)
+        );
 
         // Determine status based on month
         let status;
@@ -90,13 +98,14 @@ const seedClientBilling = async () => {
           notes: `Monthly billing for ${monthLabel}`,
         });
 
-        // Create Share Due transaction
+        // Create Share Due transaction - INCREASES balance (client owes more)
+        const shareDueAmount = finalAmount; // Positive amount (debt to client)
         const dueTxn = await ClientTransaction.create({
           client_id: client.id,
           type: "Share Due",
-          amount: -finalAmount, // Negative for due
+          amount: shareDueAmount, // Positive amount for charge
           balance_before: balance,
-          balance_after: balance - parseFloat(finalAmount),
+          balance_after: balance + shareDueAmount,
           date: new Date(billingDate.getFullYear(), billingDate.getMonth(), 15),
           remarks: `Share due for ${monthLabel}`,
           related_billing_id: billing.id,
@@ -115,17 +124,18 @@ const seedClientBilling = async () => {
 
           const paymentAmount =
             status === "Paid"
-              ? parseFloat(finalAmount)
-              : (parseFloat(finalAmount) * (0.3 + Math.random() * 0.4)).toFixed(
-                  2
+              ? finalAmount
+              : parseFloat(
+                  (finalAmount * (0.3 + Math.random() * 0.4)).toFixed(2)
                 ); // 30-70% of total
 
+          // Payment DECREASES balance (client owes less)
           await ClientTransaction.create({
             client_id: client.id,
             type: "Payment",
-            amount: paymentAmount,
+            amount: -paymentAmount, // Negative amount for payment
             balance_before: balance,
-            balance_after: parseFloat(balance) + parseFloat(paymentAmount),
+            balance_after: balance - paymentAmount,
             date: paymentDate,
             remarks: `Payment for ${monthLabel}`,
             reference_number: `PAY-${Math.floor(Math.random() * 1000000)}`,
@@ -135,80 +145,150 @@ const seedClientBilling = async () => {
           });
 
           // Update running balance
-          balance = parseFloat(balance) + parseFloat(paymentAmount);
+          balance = balance - paymentAmount;
         }
       }
 
-      // Add some deposit transactions
+      // Add security deposit transactions (these INCREASE client's balance)
       if (client.id % 2 === 0) {
-        // Security deposit payment
+        // Security deposit charge
+        const securityDepositAmount = 5000.0;
         await ClientTransaction.create({
           client_id: client.id,
           type: "Deposit",
-          amount: 5000.0,
+          amount: securityDepositAmount, // Positive amount (debt to client)
           balance_before: balance,
-          balance_after: balance + 5000.0,
+          balance_after: balance + securityDepositAmount,
+          date: new Date(
+            currentDate.getFullYear(),
+            currentDate.getMonth() - 2,
+            5
+          ), // Charge first
+          remarks: "Security deposit requirement",
+          reference_number: `DEP-REQ-${Math.floor(Math.random() * 1000000)}`,
+        });
+
+        balance += securityDepositAmount;
+
+        // Security deposit payment (DECREASES balance)
+        await ClientTransaction.create({
+          client_id: client.id,
+          type: "Payment",
+          amount: -securityDepositAmount, // Negative amount for payment
+          balance_before: balance,
+          balance_after: balance - securityDepositAmount,
           date: new Date(
             currentDate.getFullYear(),
             currentDate.getMonth() - 2,
             10
-          ),
+          ), // Pay 5 days later
           remarks: "Security deposit payment",
-          reference_number: `DEP-${Math.floor(Math.random() * 1000000)}`,
+          reference_number: `DEP-PAY-${Math.floor(Math.random() * 1000000)}`,
           payment_method: "Bank Transfer",
         });
 
-        balance += 5000.0;
+        balance -= securityDepositAmount;
       } else {
-        // Partial security deposit payment
+        // Partial security deposit scenario
+        const securityDepositAmount = 5000.0;
+        const partialPayment = 2500.0;
+
+        // Security deposit charge
         await ClientTransaction.create({
           client_id: client.id,
           type: "Deposit",
-          amount: 2500.0,
+          amount: securityDepositAmount, // Positive amount (debt to client)
           balance_before: balance,
-          balance_after: balance + 2500.0,
+          balance_after: balance + securityDepositAmount,
+          date: new Date(
+            currentDate.getFullYear(),
+            currentDate.getMonth() - 2,
+            5
+          ), // Charge first
+          remarks: "Security deposit requirement",
+          reference_number: `DEP-REQ-${Math.floor(Math.random() * 1000000)}`,
+        });
+
+        balance += securityDepositAmount;
+
+        // Partial security deposit payment
+        await ClientTransaction.create({
+          client_id: client.id,
+          type: "Payment",
+          amount: -partialPayment, // Negative amount for payment
+          balance_before: balance,
+          balance_after: balance - partialPayment,
           date: new Date(
             currentDate.getFullYear(),
             currentDate.getMonth() - 2,
             10
           ),
           remarks: "Partial security deposit payment",
-          reference_number: `DEP-${Math.floor(Math.random() * 1000000)}`,
+          reference_number: `DEP-PAY-${Math.floor(Math.random() * 1000000)}`,
           payment_method: "Bank Transfer",
         });
 
-        balance += 2500.0;
+        balance -= partialPayment;
       }
 
       // Add additional deposit for some clients
       if (client.id % 3 === 0) {
+        const additionalDepositAmount = 2000.0;
+        const additionalPayment = 1000.0;
+
+        // Additional deposit charge
         await ClientTransaction.create({
           client_id: client.id,
           type: "Deposit",
-          amount: 1000.0,
+          amount: additionalDepositAmount, // Positive amount (debt to client)
           balance_before: balance,
-          balance_after: balance + 1000.0,
+          balance_after: balance + additionalDepositAmount,
+          date: new Date(
+            currentDate.getFullYear(),
+            currentDate.getMonth() - 1,
+            2
+          ),
+          remarks: "Additional deposit requirement",
+          reference_number: `ADD-DEP-REQ-${Math.floor(
+            Math.random() * 1000000
+          )}`,
+        });
+
+        balance += additionalDepositAmount;
+
+        // Additional deposit payment
+        await ClientTransaction.create({
+          client_id: client.id,
+          type: "Payment",
+          amount: -additionalPayment, // Negative amount for payment
+          balance_before: balance,
+          balance_after: balance - additionalPayment,
           date: new Date(
             currentDate.getFullYear(),
             currentDate.getMonth() - 1,
             5
           ),
           remarks: "Additional deposit payment",
-          reference_number: `DEP-${Math.floor(Math.random() * 1000000)}`,
+          reference_number: `ADD-DEP-PAY-${Math.floor(
+            Math.random() * 1000000
+          )}`,
           payment_method: "Bank Transfer",
         });
 
-        balance += 1000.0;
+        balance -= additionalPayment;
       }
 
       // Add occasional penalty or adjustment transactions
       if (client.id % 4 === 0) {
+        const penaltyAmount = 500.0;
+
+        // Penalty INCREASES balance
         await ClientTransaction.create({
           client_id: client.id,
           type: "Penalty",
-          amount: -500.0,
+          amount: penaltyAmount, // Positive amount for penalty
           balance_before: balance,
-          balance_after: balance - 500.0,
+          balance_after: balance + penaltyAmount,
           date: new Date(
             currentDate.getFullYear(),
             currentDate.getMonth() - 1,
@@ -218,10 +298,11 @@ const seedClientBilling = async () => {
           reference_number: `PEN-${Math.floor(Math.random() * 1000000)}`,
         });
 
-        balance -= 500.0;
+        balance += penaltyAmount;
       }
 
       if (client.id % 5 === 0) {
+        // Adjustments can be positive (client owes more) or negative (client owes less)
         const adjAmount = Math.random() > 0.5 ? 250.0 : -250.0;
 
         await ClientTransaction.create({
@@ -232,9 +313,9 @@ const seedClientBilling = async () => {
           balance_after: balance + adjAmount,
           date: new Date(currentDate.getFullYear(), currentDate.getMonth(), 5),
           remarks:
-            adjAmount > 0
+            adjAmount < 0
               ? "Billing correction in client's favor"
-              : "Billing correction adjustment",
+              : "Billing correction against client",
           reference_number: `ADJ-${Math.floor(Math.random() * 1000000)}`,
         });
 

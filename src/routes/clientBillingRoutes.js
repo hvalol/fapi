@@ -34,6 +34,12 @@ router.post(
       .notEmpty()
       .isFloat({ min: 0.01 })
       .withMessage("Amount must be a positive number"),
+    body("depositType")
+      .if(body("type").equals("Deposit"))
+      .isIn(["security", "additional"])
+      .withMessage(
+        "For deposit type, depositType must be 'security' or 'additional'"
+      ),
     validateRequest,
   ],
   clientBillingController.addCharge
