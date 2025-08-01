@@ -1,6 +1,4 @@
 // src/seeders/seed.js
-const seedClientBilling = require("./clientBillingSeed");
-
 const {
   User,
   Client,
@@ -298,8 +296,6 @@ const seedDatabase = async () => {
       status: "active",
       client_id: secondClient.id,
     });
-
-    await seedClientBilling();
 
     console.log("Database seeded successfully!");
   } catch (error) {

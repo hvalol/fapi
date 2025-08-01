@@ -6,9 +6,6 @@ const Agent = require("./Agent");
 const AgentProfile = require("./AgentProfile");
 const AgentSettings = require("./AgentSettings");
 const AgentCommission = require("./AgentCommission");
-const ClientBilling = require("./ClientBilling");
-const ClientTransaction = require("./ClientTransaction");
-const ClientDeposit = require("./ClientDeposit");
 
 // Client-User Association
 Client.hasMany(User, { foreignKey: "client_id", as: "users" });
@@ -34,31 +31,6 @@ AgentCommission.belongsTo(Agent, { foreignKey: "agent_id" });
 Agent.belongsTo(Agent, { foreignKey: "parent_id", as: "parent" });
 Agent.hasMany(Agent, { foreignKey: "parent_id", as: "children" });
 
-// Client-ClientBilling Association
-Client.hasMany(ClientBilling, { foreignKey: "client_id", as: "billings" });
-ClientBilling.belongsTo(Client, { foreignKey: "client_id" });
-
-// Client-ClientTransaction Association
-Client.hasMany(ClientTransaction, {
-  foreignKey: "client_id",
-  as: "transactions",
-});
-ClientTransaction.belongsTo(Client, { foreignKey: "client_id" });
-
-// ClientBilling-ClientTransaction Association (Optional)
-ClientBilling.hasMany(ClientTransaction, {
-  foreignKey: "related_billing_id",
-  as: "transactions",
-});
-ClientTransaction.belongsTo(ClientBilling, {
-  foreignKey: "related_billing_id",
-  as: "billing",
-});
-
-// Client-ClientDeposit Association (One-to-One)
-Client.hasOne(ClientDeposit, { foreignKey: "client_id", as: "deposit" });
-ClientDeposit.belongsTo(Client, { foreignKey: "client_id" });
-
 module.exports = {
   sequelize,
   User,
@@ -67,7 +39,4 @@ module.exports = {
   AgentProfile,
   AgentSettings,
   AgentCommission,
-  ClientBilling,
-  ClientTransaction,
-  ClientDeposit,
 };
