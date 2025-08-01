@@ -5,6 +5,8 @@ const {
   ClientDeposit,
   sequelize,
 } = require("../models");
+const { Op } = require("sequelize");
+
 const { AppError } = require("../middlewares/errorHandler");
 const PDFDocument = require("pdfkit");
 const fs = require("fs");
@@ -108,28 +110,116 @@ class ClientBillingService {
     return clients.map((client) => {
       const rawClient = client.toJSON();
 
-      // Calculate aggregate metrics
-      const totalDue = this.calculateTotalDue(rawClient);
-      const paidThisMonth = this.calculatePaidThisMonth(rawClient);
-      const outstandingBalance = totalDue - paidThisMonth;
-
       // Prepare security deposit data
       const securityDeposit = {
-        required: rawClient.deposit ? rawClient.deposit.security_required : 0,
-        paid: rawClient.deposit ? rawClient.deposit.security_paid : 0,
+        required: rawClient.deposit
+          ? parseFloat(rawClient.deposit.security_required)
+          : 0,
+        paid: rawClient.deposit
+          ? parseFloat(rawClient.deposit.security_paid)
+          : 0,
       };
 
       // Prepare additional deposit data
       const additionalDeposit = {
-        required: rawClient.deposit ? rawClient.deposit.additional_required : 0,
-        paid: rawClient.deposit ? rawClient.deposit.additional_paid : 0,
+        required: rawClient.deposit
+          ? parseFloat(rawClient.deposit.additional_required)
+          : 0,
+        paid: rawClient.deposit
+          ? parseFloat(rawClient.deposit.additional_paid)
+          : 0,
+      };
+
+      // Calculate accurate outstanding balance with detailed breakdown
+      let outstandingBalance = 0;
+      let totalCharges = 0;
+      let totalPayments = 0;
+      let depositCharges = 0;
+      let regularCharges = 0;
+      let depositPayments = 0;
+      let regularPayments = 0;
+
+      if (rawClient.transactions && rawClient.transactions.length > 0) {
+        // Process all transactions for detailed balance calculation
+        rawClient.transactions.forEach((tx) => {
+          const amount = Math.abs(parseFloat(tx.amount));
+
+          if (tx.type === "Payment") {
+            totalPayments += amount;
+            // Note: We can't easily determine deposit payments from transactions alone
+            // We'll rely on deposit.paid values instead
+            regularPayments += amount;
+          } else if (tx.type === "Deposit") {
+            totalCharges += amount;
+            depositCharges += amount;
+          } else if (tx.amount < 0) {
+            // Other charge types (negative amount = charge)
+            totalCharges += amount;
+            regularCharges += amount;
+          }
+        });
+
+        // Calculate deposit payments from deposit paid values
+        depositPayments = securityDeposit.paid + additionalDeposit.paid;
+
+        // Adjust regular payments to exclude deposit payments
+        regularPayments = Math.max(0, totalPayments - depositPayments);
+
+        // Calculate outstanding balance: charges minus payments
+        const regularOutstanding = regularCharges - regularPayments;
+
+        // Calculate deposit requirements shortfall
+        const depositOutstanding = depositCharges - depositPayments;
+
+        // Total outstanding balance
+        outstandingBalance = regularOutstanding + depositOutstanding;
+
+        // If fully paid up with no outstanding deposit requirements,
+        // allow showing credit balance (negative outstanding)
+        if (depositOutstanding <= 0 && regularOutstanding < 0) {
+          outstandingBalance = regularOutstanding;
+        }
+      }
+
+      // Calculate billing due amount (unpaid invoices)
+      const billingDue = this.calculateBillingDue(rawClient);
+
+      // Calculate deposit shortfalls
+      const securityDepositShortfall = Math.max(
+        0,
+        securityDeposit.required - securityDeposit.paid
+      );
+      const additionalDepositShortfall = Math.max(
+        0,
+        additionalDeposit.required - additionalDeposit.paid
+      );
+      const depositDue = securityDepositShortfall + additionalDepositShortfall;
+
+      // Total due combines billing and deposit requirements
+      const totalDue = Math.max(0, billingDue + depositDue);
+
+      // Monthly payment calculation
+      const paidThisMonth = this.calculatePaidThisMonth(rawClient);
+
+      // Calculate non-deposit charges
+      const nonDepositDue = this.calculateNonDepositDue(rawClient);
+
+      // Create detailed metadata for frontend
+      const balanceMetadata = {
+        billingDue,
+        depositDue,
+        nonDepositDue,
+        regularCharges,
+        regularPayments,
+        depositCharges,
+        depositPayments,
+        hasOnlyDepositRequirements: depositDue > 0 && nonDepositDue === 0,
       };
 
       // Determine last payment date
       const paymentTransactions = rawClient.transactions
         ? rawClient.transactions.filter((t) => t.type === "Payment")
         : [];
-
       const lastPaymentDate =
         paymentTransactions.length > 0 ? paymentTransactions[0].date : null;
 
@@ -176,20 +266,21 @@ class ClientBillingService {
         outstandingBalance,
         securityDeposit,
         additionalDeposit,
+        balanceMetadata,
         lastPaymentDate,
         transactionHistory,
         monthlyBilling,
-        default_currency: "USD", // Default currency - can be made dynamic later
+        default_currency: "USD",
       };
     });
   }
 
   /**
-   * Calculate total due from all outstanding billings
+   * Calculate billing due from all outstanding billings
    * @param {Object} client - Raw client data
-   * @returns {number} - Total due amount
+   * @returns {number} - Billing due amount
    */
-  calculateTotalDue(client) {
+  calculateBillingDue(client) {
     if (!client.billings || client.billings.length === 0) {
       return 0;
     }
@@ -200,6 +291,24 @@ class ClientBillingService {
       }
       return total;
     }, 0);
+  }
+
+  /**
+   * Calculate non-deposit charge balance
+   * This helps distinguish between deposit requirements and other charges
+   * @param {Object} client - Raw client data
+   * @returns {number} - Non-deposit due amount
+   */
+  calculateNonDepositDue(client) {
+    if (!client.transactions || client.transactions.length === 0) {
+      return 0;
+    }
+
+    return (
+      client.transactions
+        .filter((t) => t.type !== "Deposit" && t.type !== "Payment")
+        .reduce((total, t) => total + parseFloat(t.amount), 0) * -1
+    ); // Convert to positive
   }
 
   /**
@@ -248,14 +357,17 @@ class ClientBillingService {
       const currentBalance = lastTransaction
         ? lastTransaction.balance_after
         : 0;
-      const newBalance = currentBalance + parseFloat(chargeData.amount); // Add because charges increase what client owes
+
+      // For charge types, we increase the balance (negative amount for the client)
+      const chargeAmount = parseFloat(chargeData.amount);
+      const newBalance = currentBalance + chargeAmount;
 
       // Create the transaction
       await ClientTransaction.create(
         {
           client_id: clientId,
           type: chargeData.type,
-          amount: -parseFloat(chargeData.amount), // Negative amount for charges
+          amount: -chargeAmount, // Negative amount for charges (consistent with financial convention)
           balance_before: currentBalance,
           balance_after: newBalance,
           date: chargeData.date || new Date(),
@@ -291,12 +403,10 @@ class ClientBillingService {
 
         if (chargeData.depositType === "security") {
           deposit.security_required =
-            parseFloat(deposit.security_required) +
-            parseFloat(chargeData.amount);
+            parseFloat(deposit.security_required) + chargeAmount;
         } else if (chargeData.depositType === "additional") {
           deposit.additional_required =
-            parseFloat(deposit.additional_required) +
-            parseFloat(chargeData.amount);
+            parseFloat(deposit.additional_required) + chargeAmount;
         }
 
         await deposit.save({ transaction });
@@ -323,6 +433,49 @@ class ClientBillingService {
    * @returns {Object} - Updated client data
    */
   async recordPayment(clientId, paymentData) {
+    // Validate payment data before processing
+    if (!paymentData || typeof paymentData !== "object") {
+      throw new AppError("Invalid payment data", 400);
+    }
+
+    if (
+      isNaN(parseFloat(paymentData.amount)) ||
+      parseFloat(paymentData.amount) <= 0
+    ) {
+      throw new AppError("Payment amount must be a positive number", 400);
+    }
+
+    if (!paymentData.paymentMethod) {
+      throw new AppError("Payment method is required", 400);
+    }
+
+    if (paymentData.depositPayment === true) {
+      if (
+        !paymentData.depositType ||
+        !["security", "additional"].includes(paymentData.depositType)
+      ) {
+        throw new AppError(
+          "Valid deposit type is required for deposit payments",
+          400
+        );
+      }
+
+      if (
+        isNaN(parseFloat(paymentData.depositAmount)) ||
+        parseFloat(paymentData.depositAmount) <= 0
+      ) {
+        throw new AppError("Deposit amount must be a positive number", 400);
+      }
+
+      if (
+        parseFloat(paymentData.depositAmount) > parseFloat(paymentData.amount)
+      ) {
+        throw new AppError(
+          "Deposit amount cannot exceed total payment amount",
+          400
+        );
+      }
+    }
     const transaction = await sequelize.transaction();
 
     try {
@@ -331,6 +484,69 @@ class ClientBillingService {
         throw new AppError("Client not found", 404);
       }
 
+      // Get deposit requirements
+      let deposit = await ClientDeposit.findOne({
+        where: { client_id: clientId },
+        transaction,
+      });
+
+      // Calculate deposit shortfalls
+      const securityDepositShortfall = deposit
+        ? Math.max(
+            0,
+            parseFloat(deposit.security_required) -
+              parseFloat(deposit.security_paid)
+          )
+        : 0;
+
+      const additionalDepositShortfall = deposit
+        ? Math.max(
+            0,
+            parseFloat(deposit.additional_required) -
+              parseFloat(deposit.additional_paid)
+          )
+        : 0;
+
+      const hasDepositRequirements =
+        securityDepositShortfall > 0 || additionalDepositShortfall > 0;
+
+      // Safely check for non-deposit charges with error handling
+      let hasNonDepositCharges = false;
+      try {
+        // Count non-deposit charges to determine if there are pending non-deposit charges
+        const nonDepositCharges = await ClientTransaction.findAll({
+          where: {
+            client_id: clientId,
+            type: {
+              [Op.notIn]: ["Deposit", "Payment"], // Using imported Op
+            },
+          },
+          transaction,
+        });
+
+        hasNonDepositCharges =
+          nonDepositCharges.length > 0 &&
+          nonDepositCharges.reduce(
+            (sum, tx) => sum + Math.abs(parseFloat(tx.amount)),
+            0
+          ) > 0;
+      } catch (error) {
+        console.warn("Error checking for non-deposit charges:", error);
+        // Fallback: Assume there might be non-deposit charges
+        hasNonDepositCharges = true;
+      }
+
+      // If client only has deposit requirements and no other charges,
+      // payment must be allocated to deposits
+      const hasOnlyDepositRequirements =
+        hasDepositRequirements && !hasNonDepositCharges;
+
+      if (hasOnlyDepositRequirements && !paymentData.depositPayment) {
+        throw new AppError(
+          "This client only has deposit requirements. Payment must be allocated to deposits.",
+          400
+        );
+      }
       // Get the current balance
       const lastTransaction = await ClientTransaction.findOne({
         where: { client_id: clientId },
@@ -339,73 +555,16 @@ class ClientBillingService {
       });
 
       const currentBalance = lastTransaction
-        ? lastTransaction.balance_after
+        ? parseFloat(lastTransaction.balance_after)
         : 0;
-      const newBalance = currentBalance - parseFloat(paymentData.amount); // Subtract because payments reduce what client owes
 
-      // Create the payment transaction
-      await ClientTransaction.create(
-        {
-          client_id: clientId,
-          type: "Payment",
-          amount: parseFloat(paymentData.amount), // Positive amount for payments
-          balance_before: currentBalance,
-          balance_after: newBalance,
-          date: paymentData.date || new Date(),
-          remarks:
-            paymentData.remarks ||
-            `Payment received - ${paymentData.paymentMethod}`,
-          reference_number: paymentData.referenceNumber,
-          payment_method: paymentData.paymentMethod,
-          related_billing_id: paymentData.relatedBillingId || null,
-        },
-        { transaction }
-      );
+      // For payments, we decrease the balance (client owes less)
+      const paymentAmount = parseFloat(paymentData.amount);
+      let depositAmount = 0;
 
-      // Update billing status if this payment is related to a specific billing
-      if (paymentData.relatedBillingId) {
-        const billing = await ClientBilling.findByPk(
-          paymentData.relatedBillingId,
-          { transaction }
-        );
-
-        if (billing) {
-          // Get all payments for this billing
-          const billingPayments = await ClientTransaction.findAll({
-            where: {
-              client_id: clientId,
-              type: "Payment",
-              related_billing_id: billing.id,
-            },
-            transaction,
-          });
-
-          const totalPaid = billingPayments.reduce(
-            (sum, payment) => sum + parseFloat(payment.amount),
-            0
-          );
-
-          // Update billing status based on payment amount
-          if (totalPaid >= parseFloat(billing.final_amount)) {
-            billing.status = "Paid";
-          } else if (totalPaid > 0) {
-            billing.status = "Partially Paid";
-          }
-
-          await billing.save({ transaction });
-        }
-      }
-
-      // If this is a deposit payment, update the deposit record
-      if (
-        paymentData.depositPayment &&
-        paymentData.depositType &&
-        paymentData.amount
-      ) {
-        let deposit = await ClientDeposit.findOne({
-          where: { client_id: clientId },
-          transaction,
-        });
+      // Process deposit payment if applicable
+      if (paymentData.depositPayment && paymentData.depositAmount > 0) {
+        depositAmount = parseFloat(paymentData.depositAmount);
 
         if (!deposit) {
           deposit = await ClientDeposit.create(
@@ -420,18 +579,53 @@ class ClientBillingService {
           );
         }
 
+        // Update deposit paid amount based on type
         if (paymentData.depositType === "security") {
+          if (depositAmount > securityDepositShortfall) {
+            throw new AppError(
+              `Maximum security deposit needed is ${securityDepositShortfall}`,
+              400
+            );
+          }
           deposit.security_paid =
-            parseFloat(deposit.security_paid) + parseFloat(paymentData.amount);
+            parseFloat(deposit.security_paid) + depositAmount;
         } else if (paymentData.depositType === "additional") {
+          if (depositAmount > additionalDepositShortfall) {
+            throw new AppError(
+              `Maximum additional deposit needed is ${additionalDepositShortfall}`,
+              400
+            );
+          }
           deposit.additional_paid =
-            parseFloat(deposit.additional_paid) +
-            parseFloat(paymentData.amount);
+            parseFloat(deposit.additional_paid) + depositAmount;
         }
 
         deposit.last_deposit_date = paymentData.date || new Date();
         await deposit.save({ transaction });
       }
+
+      // Full payment amount reduces the balance regardless of deposit allocation
+
+      const newBalance = Math.max(0, currentBalance - paymentAmount);
+
+      // Create the payment transaction with the referenceNumber field
+      await ClientTransaction.create(
+        {
+          client_id: clientId,
+          type: "Payment",
+          amount: paymentAmount, // Positive amount for payments
+          balance_before: currentBalance,
+          balance_after: newBalance,
+          date: paymentData.date || new Date(),
+          remarks:
+            paymentData.remarks ||
+            `Payment received - ${paymentData.paymentMethod}`,
+          reference_number: paymentData.referenceNumber,
+          payment_method: paymentData.paymentMethod,
+          related_billing_id: paymentData.relatedBillingId || null,
+        },
+        { transaction }
+      );
 
       await transaction.commit();
 
@@ -439,11 +633,19 @@ class ClientBillingService {
       return await this.getClientBillingById(clientId);
     } catch (error) {
       await transaction.rollback();
+
+      // Enhanced error logging
+      console.error("Error in recordPayment service:", {
+        clientId,
+        errorMessage: error.message,
+        errorStack: error.stack,
+        paymentData: JSON.stringify(paymentData),
+      });
+
       if (error instanceof AppError) {
         throw error;
       }
-      console.error(`Error in recordPayment for client ${clientId}:`, error);
-      throw new AppError("Failed to record payment", 500);
+      throw new AppError(`Failed to record payment: ${error.message}`, 500);
     }
   }
 

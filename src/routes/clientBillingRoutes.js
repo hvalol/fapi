@@ -55,6 +55,11 @@ router.post(
       .isFloat({ min: 0.01 })
       .withMessage("Amount must be a positive number"),
     body("paymentMethod").notEmpty().withMessage("Payment method is required"),
+    // Match the field name to what frontend sends
+    body("referenceNumber")
+      .optional()
+      .isString()
+      .withMessage("Reference number must be a string"),
     validateRequest,
   ],
   clientBillingController.recordPayment

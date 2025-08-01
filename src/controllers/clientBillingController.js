@@ -81,7 +81,21 @@ exports.addCharge = async (req, res, next) => {
 exports.recordPayment = async (req, res, next) => {
   try {
     const clientId = parseInt(req.params.id);
-    const paymentData = req.body;
+
+    // Standardize field names to match what the service expects
+    const paymentData = {
+      amount: parseFloat(req.body.amount),
+      date: req.body.date,
+      remarks: req.body.remarks,
+      paymentMethod: req.body.paymentMethod,
+      referenceNumber: req.body.referenceNumber,
+      depositPayment: req.body.depositPayment,
+      depositType: req.body.depositType,
+      depositAmount: req.body.depositAmount
+        ? parseFloat(req.body.depositAmount)
+        : undefined,
+      relatedBillingId: req.body.relatedBillingId,
+    };
 
     const client = await clientBillingService.recordPayment(
       clientId,
