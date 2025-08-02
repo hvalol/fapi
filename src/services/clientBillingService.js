@@ -3,6 +3,7 @@ const {
   ClientBilling,
   ClientTransaction,
   ClientDeposit,
+  ClientBillingCurrency,
   sequelize,
 } = require("../models");
 const { Op } = require("sequelize");
@@ -34,6 +35,13 @@ class ClientBillingService {
             model: ClientBilling,
             as: "billings",
             required: false,
+            include: [
+              {
+                model: ClientBillingCurrency,
+                as: "currencyDetails",
+                required: false,
+              },
+            ],
             limit: 12,
             order: [["month", "DESC"]],
           },
@@ -74,6 +82,13 @@ class ClientBillingService {
             model: ClientBilling,
             as: "billings",
             required: false,
+            include: [
+              {
+                model: ClientBillingCurrency,
+                as: "currencyDetails",
+                required: false,
+              },
+            ],
             order: [["month", "DESC"]],
           },
           {
@@ -241,24 +256,39 @@ class ClientBillingService {
           }))
         : [];
 
-      // Format monthly billing for the UI
+      // Format monthly billing for the UI with currency details
       const monthlyBilling = rawClient.billings
-        ? rawClient.billings.map((b) => ({
-            id: b.id,
-            month: b.month,
-            label: b.label,
-            totalGGR: b.total_ggr,
-            shareAmount: b.final_amount,
-            datePosted: b.date_posted,
-            status: b.status,
-            breakdown: {
-              totalGGR: b.total_ggr,
-              sharePercentage: b.share_percentage,
-              platformFee: b.platform_fee,
-              adjustments: b.adjustments,
-              finalAmount: b.final_amount,
-            },
-          }))
+        ? rawClient.billings.map((b) => {
+            // Ensure we include the currency details
+            const currencyDetails = b.currencyDetails || [];
+
+            return {
+              id: b.id,
+              month: b.month,
+              label: b.label,
+              gameProvider: b.game_provider,
+              currency: b.currency, // Will be USD for multi-currency
+              totalGGR: b.total_ggr, // Total in USD
+              shareAmount: b.share_amount, // This is in USD
+              datePosted: b.date_posted,
+              status: b.status,
+              // Include currency details for multi-currency support
+              hasMultipleCurrencies: currencyDetails.length > 0,
+              currencyDetails: currencyDetails.map((cd) => ({
+                currency: cd.currency,
+                ggrAmount: parseFloat(cd.ggr_amount),
+                exchangeRate: parseFloat(cd.exchange_rate),
+                usdEquivalent: parseFloat(cd.usd_equivalent),
+              })),
+              breakdown: {
+                totalGGR: b.total_ggr,
+                sharePercentage: b.share_percentage,
+                platformFee: b.platform_fee,
+                finalAmount: b.final_amount,
+                currency: "USD", // Always USD for calculations
+              },
+            };
+          })
         : [];
 
       return {
@@ -400,102 +430,181 @@ class ClientBillingService {
         ? parseFloat(lastTransaction.balance_after)
         : 0;
 
-      // For charge types, we increase the balance (negative amount for the client)
-      const chargeAmount = parseFloat(chargeData.amount);
-      const newBalance = currentBalance + chargeAmount;
-
-      // Create the transaction
-      const clientTransaction = await ClientTransaction.create(
-        {
-          client_id: clientId,
-          type: chargeData.type,
-          amount: -chargeAmount, // Negative amount for charges (consistent with financial convention)
-          balance_before: currentBalance,
-          balance_after: newBalance,
-          date: chargeData.date || new Date(),
-          remarks: chargeData.remarks || `${chargeData.type} charge`,
-          reference_number: chargeData.referenceNumber,
-        },
-        { transaction }
-      );
-
-      // If this is a deposit charge, update the deposit record
-      if (
-        chargeData.type === "Deposit" &&
-        chargeData.depositType &&
-        chargeData.amount
-      ) {
-        let deposit = await ClientDeposit.findOne({
-          where: { client_id: clientId },
-          transaction,
-        });
-
-        if (!deposit) {
-          deposit = await ClientDeposit.create(
-            {
-              client_id: clientId,
-              security_required: 0,
-              security_paid: 0,
-              additional_required: 0,
-              additional_paid: 0,
-            },
-            { transaction }
-          );
-        }
-
-        if (chargeData.depositType === "security") {
-          deposit.security_required =
-            parseFloat(deposit.security_required) + chargeAmount;
-        } else if (chargeData.depositType === "additional") {
-          deposit.additional_required =
-            parseFloat(deposit.additional_required) + chargeAmount;
-        }
-
-        await deposit.save({ transaction });
-      }
+      let chargeAmount = parseFloat(chargeData.amount);
+      let finalAmountUsd = chargeAmount; // Default to the provided amount
 
       // If this is a Share Due charge, create a monthly billing record
       if (chargeData.type === "Share Due" && chargeData.monthlyBillingData) {
         const billingData = chargeData.monthlyBillingData;
+        const gameProvider = chargeData.gameProvider || "General";
 
-        // Check if a billing record already exists for this month
+        // Handle the case for multiple currencies
+        const currencyDetails = chargeData.currencyDetails || [];
+
+        // Calculate total GGR in USD across all currencies
+        let totalGgrUsd = 0;
+
+        // If no currency details provided, use the old single-currency logic
+        if (currencyDetails.length === 0 && chargeData.totalGGR) {
+          const currency = chargeData.currency || "USD";
+          const exchangeRate = parseFloat(chargeData.exchangeRate) || 1.0;
+
+          // Convert single GGR to USD
+          totalGgrUsd = parseFloat(chargeData.totalGGR) * exchangeRate;
+
+          // Add to currency details for consistent processing
+          currencyDetails.push({
+            currency,
+            ggrAmount: parseFloat(chargeData.totalGGR),
+            exchangeRate,
+            usdEquivalent: totalGgrUsd,
+          });
+        } else {
+          // Calculate total GGR in USD from all currencies
+          totalGgrUsd = currencyDetails.reduce((sum, detail) => {
+            const ggrAmount = parseFloat(detail.ggrAmount) || 0;
+            const exchangeRate = parseFloat(detail.exchangeRate) || 1.0;
+            const usdEquivalent = ggrAmount * exchangeRate;
+
+            return sum + usdEquivalent;
+          }, 0);
+        }
+
+        // Calculate share amount and final amount in USD
+        const sharePercentage = parseFloat(chargeData.sharePercentage) || 0;
+        const platformFee = parseFloat(chargeData.platformFee) || 0;
+
+        const shareAmountUsd = (totalGgrUsd * sharePercentage) / 100;
+        finalAmountUsd = shareAmountUsd + platformFee;
+
+        // Check if a billing record already exists for this month and game provider
         const existingBilling = await ClientBilling.findOne({
           where: {
             client_id: clientId,
             month: billingData.month,
+            game_provider: gameProvider,
           },
           transaction,
         });
 
         if (existingBilling) {
           throw new AppError(
-            `Billing record for ${billingData.month} already exists`,
+            `A billing record for ${billingData.label} and provider "${gameProvider}" already exists`,
             400
           );
         }
 
-        // Create the billing record
+        // Create the billing record - we'll set currency to USD since that's our calculation base
         const billing = await ClientBilling.create(
           {
             client_id: clientId,
             month: billingData.month,
             label: billingData.label,
-            total_ggr: billingData.totalGGR || 0,
-            share_amount: chargeAmount,
-            share_percentage: chargeData.sharePercentage || 0,
-            platform_fee: chargeData.platformFee || 0,
-            adjustments: chargeData.adjustments || 0,
-            final_amount: chargeAmount,
+            game_provider: gameProvider,
+            currency: "USD", // Always USD as it's our calculation base
+            exchange_rate: 1.0, // Not used for multi-currency, but set to 1.0 for USD
+            total_ggr: totalGgrUsd, // Store the total GGR in USD
+            share_amount: shareAmountUsd,
+            share_percentage: sharePercentage,
+            platform_fee: platformFee,
+            final_amount: finalAmountUsd,
             date_posted: chargeData.date || new Date(),
             status: "Unpaid",
-            notes: chargeData.remarks || `Share due for ${billingData.label}`,
+            notes:
+              chargeData.remarks ||
+              `Share due for ${billingData.label} (${gameProvider})`,
           },
           { transaction }
         );
 
-        // Link the transaction to this billing record
-        clientTransaction.related_billing_id = billing.id;
-        await clientTransaction.save({ transaction });
+        // Store all currency details related to this billing
+        for (const detail of currencyDetails) {
+          await ClientBillingCurrency.create(
+            {
+              billing_id: billing.id,
+              currency: detail.currency,
+              ggr_amount: parseFloat(detail.ggrAmount),
+              exchange_rate: parseFloat(detail.exchangeRate),
+              usd_equivalent:
+                parseFloat(detail.ggrAmount) * parseFloat(detail.exchangeRate),
+            },
+            { transaction }
+          );
+        }
+
+        // Use the final USD amount for the charge
+        chargeAmount = finalAmountUsd;
+
+        // Create the transaction
+        const clientTransaction = await ClientTransaction.create(
+          {
+            client_id: clientId,
+            type: chargeData.type,
+            amount: -chargeAmount, // Negative amount for charges
+            balance_before: currentBalance,
+            balance_after: currentBalance + chargeAmount,
+            date: chargeData.date || new Date(),
+            remarks: chargeData.remarks || `${chargeData.type} charge`,
+            reference_number: chargeData.referenceNumber,
+            currency: "USD", // Always store charges in USD
+            related_billing_id: billing.id,
+          },
+          { transaction }
+        );
+      } else {
+        // For charge types other than Share Due, we increase the balance (negative amount for the client)
+        const newBalance = currentBalance + chargeAmount;
+
+        // Create the transaction
+        await ClientTransaction.create(
+          {
+            client_id: clientId,
+            type: chargeData.type,
+            amount: -chargeAmount, // Negative amount for charges (consistent with financial convention)
+            balance_before: currentBalance,
+            balance_after: newBalance,
+            date: chargeData.date || new Date(),
+            remarks: chargeData.remarks || `${chargeData.type} charge`,
+            reference_number: chargeData.referenceNumber,
+            currency: "USD", // Always store charges in USD
+          },
+          { transaction }
+        );
+
+        // If this is a deposit charge, update the deposit record
+        if (
+          chargeData.type === "Deposit" &&
+          chargeData.depositType &&
+          chargeData.amount
+        ) {
+          let deposit = await ClientDeposit.findOne({
+            where: { client_id: clientId },
+            transaction,
+          });
+
+          if (!deposit) {
+            deposit = await ClientDeposit.create(
+              {
+                client_id: clientId,
+                security_required: 0,
+                security_paid: 0,
+                additional_required: 0,
+                additional_paid: 0,
+              },
+              { transaction }
+            );
+          }
+
+          if (chargeData.depositType === "security") {
+            deposit.security_required =
+              parseFloat(deposit.security_required) + chargeAmount;
+          } else if (chargeData.depositType === "additional") {
+            deposit.additional_required =
+              parseFloat(deposit.additional_required) + chargeAmount;
+          }
+
+          await deposit.save({ transaction });
+        }
       }
 
       await transaction.commit();

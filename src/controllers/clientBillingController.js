@@ -61,6 +61,78 @@ exports.addCharge = async (req, res, next) => {
     const clientId = parseInt(req.params.id);
     const chargeData = req.body;
 
+    // Validate for Share Due charges
+    if (chargeData.type === "Share Due") {
+      // Check if we have currencyDetails or fallback to single currency
+      if (
+        !chargeData.currencyDetails ||
+        chargeData.currencyDetails.length === 0
+      ) {
+        // Validate single-currency mode fields
+        if (!chargeData.gameProvider) {
+          return next(
+            new AppError("Game provider is required for Share Due charges", 400)
+          );
+        }
+
+        if (!chargeData.currency) {
+          return next(
+            new AppError("Currency is required for Share Due charges", 400)
+          );
+        }
+
+        if (
+          !chargeData.exchangeRate ||
+          isNaN(parseFloat(chargeData.exchangeRate)) ||
+          parseFloat(chargeData.exchangeRate) <= 0
+        ) {
+          return next(
+            new AppError(
+              "A valid exchange rate is required for Share Due charges",
+              400
+            )
+          );
+        }
+
+        // Add monthlyBillingData if not present
+        if (!chargeData.monthlyBillingData) {
+          chargeData.monthlyBillingData = {
+            month: chargeData.billingMonth,
+            label:
+              chargeData.billingPeriodLabel ||
+              `Month ${chargeData.billingMonth}`,
+            totalGGR: parseFloat(chargeData.totalGGR || 0),
+            shareAmount: parseFloat(chargeData.amount),
+            datePosted: chargeData.date,
+            gameProvider: chargeData.gameProvider,
+          };
+        }
+      } else {
+        // Multi-currency mode
+        // Ensure each currency detail has the required fields
+        chargeData.currencyDetails.forEach((detail, index) => {
+          detail.currency = detail.currency.toUpperCase();
+          detail.ggrAmount = parseFloat(detail.ggrAmount);
+          detail.exchangeRate = parseFloat(detail.exchangeRate);
+          detail.usdEquivalent = detail.ggrAmount * detail.exchangeRate;
+        });
+
+        // Add monthlyBillingData if not present
+        if (!chargeData.monthlyBillingData) {
+          chargeData.monthlyBillingData = {
+            month: chargeData.billingMonth,
+            label:
+              chargeData.billingPeriodLabel ||
+              `Month ${chargeData.billingMonth}`,
+            totalGGR: parseFloat(chargeData.totalGgrUsd || 0),
+            shareAmount: parseFloat(chargeData.amount),
+            datePosted: chargeData.date,
+            gameProvider: chargeData.gameProvider,
+          };
+        }
+      }
+    }
+
     const client = await clientBillingService.addCharge(clientId, chargeData);
 
     res.json({

@@ -21,6 +21,22 @@ const ClientBilling = sequelize.define(
       type: DataTypes.STRING,
       allowNull: false, // E.g., "July 2025"
     },
+    game_provider: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      defaultValue: "General", // Default provider if none specified
+    },
+    currency: {
+      type: DataTypes.STRING(3),
+      allowNull: false,
+      defaultValue: "USD", // Default currency
+    },
+    exchange_rate: {
+      type: DataTypes.DECIMAL(15, 6),
+      allowNull: false,
+      defaultValue: 1.0, // Default exchange rate (1:1 for USD to USD)
+      comment: "Exchange rate from the transaction currency to USD",
+    },
     total_ggr: {
       type: DataTypes.DECIMAL(15, 2),
       allowNull: false,
@@ -37,11 +53,6 @@ const ClientBilling = sequelize.define(
       defaultValue: 0,
     },
     platform_fee: {
-      type: DataTypes.DECIMAL(15, 2),
-      allowNull: false,
-      defaultValue: 0,
-    },
-    adjustments: {
       type: DataTypes.DECIMAL(15, 2),
       allowNull: false,
       defaultValue: 0,
@@ -69,6 +80,14 @@ const ClientBilling = sequelize.define(
     timestamps: true,
     tableName: "client_billings",
     underscored: true,
+    indexes: [
+      // Add unique index to prevent duplicate billings for the same month, client, and game provider
+      {
+        unique: true,
+        fields: ["client_id", "month", "game_provider"],
+        name: "client_billing_month_provider_unique",
+      },
+    ],
   }
 );
 
