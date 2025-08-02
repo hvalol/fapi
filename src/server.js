@@ -11,11 +11,10 @@ const connectDB = async () => {
     await sequelize.authenticate();
     console.log("Database connection has been established successfully.");
 
-    // Sync models with database (only in development)
+    // Only sync NEW models without altering existing tables (Only in development)
     if (process.env.NODE_ENV === "development") {
-      // For development only - don't use force: true in production
-      await sequelize.sync({ alter: true });
-      console.log("Database synchronized");
+      await sequelize.sync({ alter: false });
+      console.log("Database synchronized (new models only)");
     }
   } catch (error) {
     console.error("Unable to connect to the database:", error);

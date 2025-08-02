@@ -12,7 +12,9 @@ const User = sequelize.define(
     username: {
       type: DataTypes.STRING,
       allowNull: false,
-      unique: true,
+      unique: {
+        name: "users_username_unique", //Explicitly name the constraint
+      },
     },
     password: {
       type: DataTypes.STRING,
@@ -41,6 +43,7 @@ const User = sequelize.define(
     timestamps: true,
     tableName: "users",
     underscored: true,
+    indexes: [], // Explicitly define only necessary indexes here if needed
   }
 );
 

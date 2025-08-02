@@ -11,7 +11,8 @@
     "migrate": "node src/migrations/index.js",
     "migrate:direct": "node src/scripts/direct-migration.js",
     "migrate:rollback": "node src/migrations/index.js --rollback",
-    "test": "echo \"No tests specified yet\""
+    "test": "echo \"No tests specified yet\"",
+    "cleanup-db": "node src/scripts/cleanup-indexes.js"
   },
   "repository": {
     "type": "git",

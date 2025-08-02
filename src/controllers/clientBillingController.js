@@ -82,6 +82,9 @@ exports.recordPayment = async (req, res, next) => {
   try {
     const clientId = parseInt(req.params.id);
 
+    // Get client to check for billing requirements
+    const client = await clientBillingService.getClientBillingById(clientId);
+
     // Standardize field names to match what the service expects
     const paymentData = {
       amount: parseFloat(req.body.amount),
@@ -97,15 +100,20 @@ exports.recordPayment = async (req, res, next) => {
       relatedBillingId: req.body.relatedBillingId,
     };
 
-    const client = await clientBillingService.recordPayment(
+    // Record the payment
+    const updatedClient = await clientBillingService.recordPayment(
       clientId,
       paymentData
     );
 
+    // Return success response with updated client data
     res.json({
       status: "success",
       data: {
-        client,
+        client: updatedClient,
+        message: paymentData.relatedBillingId
+          ? "Payment recorded and associated with billing period"
+          : "Payment recorded successfully",
       },
     });
   } catch (error) {

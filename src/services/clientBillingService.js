@@ -142,20 +142,20 @@ class ClientBillingService {
       if (rawClient.transactions && rawClient.transactions.length > 0) {
         // Process all transactions for detailed balance calculation
         rawClient.transactions.forEach((tx) => {
-          const amount = Math.abs(parseFloat(tx.amount));
+          const amount = parseFloat(tx.amount);
 
-          if (tx.type === "Payment") {
+          if (amount < 0) {
+            // This is a charge
+            totalCharges += Math.abs(amount);
+
+            if (tx.type === "Deposit") {
+              depositCharges += Math.abs(amount);
+            } else {
+              regularCharges += Math.abs(amount);
+            }
+          } else {
+            // This is a payment
             totalPayments += amount;
-            // Note: We can't easily determine deposit payments from transactions alone
-            // We'll rely on deposit.paid values instead
-            regularPayments += amount;
-          } else if (tx.type === "Deposit") {
-            totalCharges += amount;
-            depositCharges += amount;
-          } else if (tx.amount < 0) {
-            // Other charge types (negative amount = charge)
-            totalCharges += amount;
-            regularCharges += amount;
           }
         });
 
@@ -195,8 +195,11 @@ class ClientBillingService {
       );
       const depositDue = securityDepositShortfall + additionalDepositShortfall;
 
-      // Total due combines billing and deposit requirements
-      const totalDue = Math.max(0, billingDue + depositDue);
+      // Calculate non-billing charges
+      const nonBillingCharges = this.calculateNonBillingCharges(rawClient);
+
+      // CHANGE: Total Share Due should only include billing due (monthly billings)
+      const totalShareDue = Math.max(0, billingDue);
 
       // Monthly payment calculation
       const paidThisMonth = this.calculatePaidThisMonth(rawClient);
@@ -208,6 +211,7 @@ class ClientBillingService {
       const balanceMetadata = {
         billingDue,
         depositDue,
+        nonBillingCharges,
         nonDepositDue,
         regularCharges,
         regularPayments,
@@ -240,6 +244,7 @@ class ClientBillingService {
       // Format monthly billing for the UI
       const monthlyBilling = rawClient.billings
         ? rawClient.billings.map((b) => ({
+            id: b.id,
             month: b.month,
             label: b.label,
             totalGGR: b.total_ggr,
@@ -261,7 +266,7 @@ class ClientBillingService {
         name: rawClient.name,
         status: rawClient.status,
         onboardingDate: rawClient.onboarding_date,
-        totalDue,
+        totalShareDue: totalShareDue,
         paidThisMonth,
         outstandingBalance,
         securityDeposit,
@@ -276,7 +281,30 @@ class ClientBillingService {
   }
 
   /**
-   * Calculate billing due from all outstanding billings
+   * Calculate charges that are not included in monthly billing
+   * This helps account for penalty charges, adjustments, etc.
+   * @param {Object} client - Raw client data
+   * @returns {number} - Total amount of non-billing charges
+   */
+  calculateNonBillingCharges(client) {
+    if (!client.transactions || client.transactions.length === 0) {
+      return 0;
+    }
+
+    // Sum up charges that are not Share Due or Deposit
+    return client.transactions
+      .filter(
+        (t) =>
+          t.type !== "Share Due" &&
+          t.type !== "Deposit" &&
+          t.type !== "Payment" &&
+          parseFloat(t.amount) < 0
+      )
+      .reduce((total, t) => total + Math.abs(parseFloat(t.amount)), 0);
+  }
+
+  /**
+   * Calculate billing due from all outstanding billings (excluding deposits)
    * @param {Object} client - Raw client data
    * @returns {number} - Billing due amount
    */
@@ -286,8 +314,19 @@ class ClientBillingService {
     }
 
     return client.billings.reduce((total, billing) => {
-      if (billing.status !== "Paid") {
+      if (billing.status === "Unpaid") {
         return total + parseFloat(billing.final_amount);
+      } else if (billing.status === "Partially Paid") {
+        // Calculate how much is still due for partially paid billings
+        const paidAmount = client.transactions
+          .filter(
+            (t) => t.type === "Payment" && t.related_billing_id === billing.id
+          )
+          .reduce((sum, t) => sum + parseFloat(t.amount), 0);
+
+        return (
+          total + Math.max(0, parseFloat(billing.final_amount) - paidAmount)
+        );
       }
       return total;
     }, 0);
@@ -350,12 +389,15 @@ class ClientBillingService {
       // Get the current balance
       const lastTransaction = await ClientTransaction.findOne({
         where: { client_id: clientId },
-        order: [["date", "DESC"]],
+        order: [
+          ["date", "DESC"],
+          ["id", "DESC"],
+        ],
         transaction,
       });
 
       const currentBalance = lastTransaction
-        ? lastTransaction.balance_after
+        ? parseFloat(lastTransaction.balance_after)
         : 0;
 
       // For charge types, we increase the balance (negative amount for the client)
@@ -363,7 +405,7 @@ class ClientBillingService {
       const newBalance = currentBalance + chargeAmount;
 
       // Create the transaction
-      await ClientTransaction.create(
+      const clientTransaction = await ClientTransaction.create(
         {
           client_id: clientId,
           type: chargeData.type,
@@ -410,6 +452,50 @@ class ClientBillingService {
         }
 
         await deposit.save({ transaction });
+      }
+
+      // If this is a Share Due charge, create a monthly billing record
+      if (chargeData.type === "Share Due" && chargeData.monthlyBillingData) {
+        const billingData = chargeData.monthlyBillingData;
+
+        // Check if a billing record already exists for this month
+        const existingBilling = await ClientBilling.findOne({
+          where: {
+            client_id: clientId,
+            month: billingData.month,
+          },
+          transaction,
+        });
+
+        if (existingBilling) {
+          throw new AppError(
+            `Billing record for ${billingData.month} already exists`,
+            400
+          );
+        }
+
+        // Create the billing record
+        const billing = await ClientBilling.create(
+          {
+            client_id: clientId,
+            month: billingData.month,
+            label: billingData.label,
+            total_ggr: billingData.totalGGR || 0,
+            share_amount: chargeAmount,
+            share_percentage: chargeData.sharePercentage || 0,
+            platform_fee: chargeData.platformFee || 0,
+            adjustments: chargeData.adjustments || 0,
+            final_amount: chargeAmount,
+            date_posted: chargeData.date || new Date(),
+            status: "Unpaid",
+            notes: chargeData.remarks || `Share due for ${billingData.label}`,
+          },
+          { transaction }
+        );
+
+        // Link the transaction to this billing record
+        clientTransaction.related_billing_id = billing.id;
+        await clientTransaction.save({ transaction });
       }
 
       await transaction.commit();
@@ -476,6 +562,15 @@ class ClientBillingService {
         );
       }
     }
+
+    // Define context variables outside the try block to ensure they're available in catch
+    let hasDepositRequirements = false;
+    let hasNonDepositCharges = false;
+    let hasOnlyDepositRequirements = false;
+    let unpaidBillings = [];
+    let hasOtherCharges = false;
+    let hasOnlyMonthlyBillingCharges = false;
+
     const transaction = await sequelize.transaction();
 
     try {
@@ -507,11 +602,9 @@ class ClientBillingService {
           )
         : 0;
 
-      const hasDepositRequirements =
+      hasDepositRequirements =
         securityDepositShortfall > 0 || additionalDepositShortfall > 0;
 
-      // Safely check for non-deposit charges with error handling
-      let hasNonDepositCharges = false;
       try {
         // Count non-deposit charges to determine if there are pending non-deposit charges
         const nonDepositCharges = await ClientTransaction.findAll({
@@ -538,7 +631,7 @@ class ClientBillingService {
 
       // If client only has deposit requirements and no other charges,
       // payment must be allocated to deposits
-      const hasOnlyDepositRequirements =
+      hasOnlyDepositRequirements =
         hasDepositRequirements && !hasNonDepositCharges;
 
       if (hasOnlyDepositRequirements && !paymentData.depositPayment) {
@@ -550,13 +643,97 @@ class ClientBillingService {
       // Get the current balance
       const lastTransaction = await ClientTransaction.findOne({
         where: { client_id: clientId },
-        order: [["date", "DESC"]],
+        order: [
+          ["date", "DESC"],
+          ["id", "DESC"],
+        ],
         transaction,
       });
 
       const currentBalance = lastTransaction
         ? parseFloat(lastTransaction.balance_after)
         : 0;
+
+      // Check for monthly billing requirements
+      if (currentBalance > 0) {
+        // Check if client has unpaid billing records
+        unpaidBillings = await ClientBilling.findAll({
+          where: {
+            client_id: clientId,
+            status: {
+              [Op.ne]: "Paid",
+            },
+          },
+          transaction,
+        });
+
+        try {
+          const otherCharges = await ClientTransaction.findAll({
+            where: {
+              client_id: clientId,
+              type: {
+                [Op.notIn]: ["Share Due", "Payment", "Deposit"],
+              },
+              amount: {
+                [Op.lt]: 0, // Only charges (negative amounts)
+              },
+            },
+            transaction,
+          });
+
+          hasOtherCharges = otherCharges.length > 0;
+        } catch (error) {
+          console.warn("Error checking for other charges:", error);
+          // Be cautious and assume there might be other charges
+          hasOtherCharges = true;
+        }
+
+        // If client only has monthly billing charges and no billing association provided
+        hasOnlyMonthlyBillingCharges =
+          unpaidBillings.length > 0 &&
+          !hasOtherCharges &&
+          !hasDepositRequirements;
+
+        if (hasOnlyMonthlyBillingCharges) {
+          // Check if the relatedBillingId is either undefined, null, NaN, or not a valid ID
+          const relatedBillingId = paymentData.relatedBillingId;
+          const validRelatedBillingId =
+            relatedBillingId !== undefined &&
+            relatedBillingId !== null &&
+            !isNaN(parseInt(relatedBillingId, 10)) &&
+            parseInt(relatedBillingId, 10) > 0;
+
+          console.log("Billing validation:", {
+            receivedId: relatedBillingId,
+            parsedId: parseInt(relatedBillingId, 10),
+            isValid: validRelatedBillingId,
+          });
+
+          if (!validRelatedBillingId) {
+            throw new AppError(
+              `This client only has monthly billing charges. Payment must be associated with a valid billing period. Received: ${relatedBillingId}`,
+              400
+            );
+          }
+
+          // Verify that the provided billing ID actually exists and belongs to this client
+          const billingId = parseInt(relatedBillingId, 10);
+          const billingExists = await ClientBilling.findOne({
+            where: {
+              id: billingId,
+              client_id: clientId,
+            },
+            transaction,
+          });
+
+          if (!billingExists) {
+            throw new AppError(
+              `The selected billing period (ID: ${billingId}) is invalid or does not belong to this client.`,
+              400
+            );
+          }
+        }
+      }
 
       // For payments, we decrease the balance (client owes less)
       const paymentAmount = parseFloat(paymentData.amount);
@@ -609,7 +786,7 @@ class ClientBillingService {
       const newBalance = Math.max(0, currentBalance - paymentAmount);
 
       // Create the payment transaction with the referenceNumber field
-      await ClientTransaction.create(
+      const paymentTransaction = await ClientTransaction.create(
         {
           client_id: clientId,
           type: "Payment",
@@ -627,6 +804,41 @@ class ClientBillingService {
         { transaction }
       );
 
+      // Update billing status if this payment is related to a specific billing
+      if (paymentData.relatedBillingId) {
+        const billing = await ClientBilling.findByPk(
+          paymentData.relatedBillingId,
+          { transaction }
+        );
+
+        if (billing) {
+          // Get all payments for this billing
+          const billingPayments = await ClientTransaction.findAll({
+            where: {
+              client_id: clientId,
+              type: "Payment",
+              related_billing_id: billing.id,
+            },
+            transaction,
+          });
+
+          const totalPaid = billingPayments.reduce(
+            (sum, payment) => sum + parseFloat(payment.amount),
+            0
+          );
+
+          // Update billing status based on payment amount
+          if (totalPaid >= parseFloat(billing.final_amount)) {
+            billing.status = "Paid";
+          } else if (totalPaid > 0) {
+            billing.status = "Partially Paid";
+          }
+
+          // Save the updated billing record
+          await billing.save({ transaction });
+        }
+      }
+
       await transaction.commit();
 
       // Return updated client data
@@ -634,17 +846,30 @@ class ClientBillingService {
     } catch (error) {
       await transaction.rollback();
 
-      // Enhanced error logging
+      // Enhanced error logging with complete context
       console.error("Error in recordPayment service:", {
         clientId,
         errorMessage: error.message,
         errorStack: error.stack,
         paymentData: JSON.stringify(paymentData),
+        // Add validation context to help diagnose validation issues
+        context: {
+          hasDepositRequirements,
+          hasNonDepositCharges,
+          hasOnlyDepositRequirements,
+          unpaidBillingCount: Array.isArray(unpaidBillings)
+            ? unpaidBillings.length
+            : "unknown",
+          hasOtherCharges: hasOtherCharges || false,
+          hasOnlyMonthlyBillingCharges: hasOnlyMonthlyBillingCharges || false,
+          providedRelatedBillingId: paymentData.relatedBillingId || "none",
+        },
       });
 
       if (error instanceof AppError) {
         throw error;
       }
+
       throw new AppError(`Failed to record payment: ${error.message}`, 500);
     }
   }
