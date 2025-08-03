@@ -147,8 +147,24 @@ exports.addCharge = async (req, res, next) => {
 };
 
 /**
+ * Generate appropriate success message based on payment allocation
+ */
+function generateSuccessMessage(paymentData) {
+  if (paymentData.relatedBillingId && paymentData.depositPayment) {
+    return "Payment recorded and allocated to both billing period and deposit";
+  } else if (paymentData.relatedBillingId) {
+    return "Payment recorded and associated with billing period";
+  } else if (paymentData.depositPayment) {
+    return `Payment recorded and allocated to ${paymentData.depositType} deposit`;
+  } else {
+    return "Payment recorded successfully";
+  }
+}
+
+/**
  * Record a payment for a client
  * Only accessible to admin users
+ * 08/03
  */
 exports.recordPayment = async (req, res, next) => {
   try {
@@ -156,6 +172,42 @@ exports.recordPayment = async (req, res, next) => {
 
     // Get client to check for billing requirements
     const client = await clientBillingService.getClientBillingById(clientId);
+
+    // Check client payment allocation requirements
+    const hasUnpaidBillings = client.monthlyBilling?.some(
+      (b) => b.status !== "Paid"
+    );
+
+    const securityDepositShortfall = Math.max(
+      0,
+      client.securityDeposit?.required - client.securityDeposit?.paid
+    );
+
+    const additionalDepositShortfall = Math.max(
+      0,
+      client.additionalDeposit?.required - client.additionalDeposit?.paid
+    );
+
+    const hasDepositRequirements =
+      securityDepositShortfall > 0 || additionalDepositShortfall > 0;
+
+    // Check if client only has monthly billing charges (Share Due)
+    const hasOnlyMonthlyBillingCharges =
+      client.monthlyBilling?.some((b) => b.status !== "Paid") &&
+      !client.transactionHistory?.some(
+        (tx) =>
+          tx.type !== "Share Due" &&
+          tx.type !== "Payment" &&
+          tx.type !== "Deposit" &&
+          tx.amount < 0
+      );
+
+    // Check if client only has deposit requirements
+    const hasOnlyDepositRequirements =
+      hasDepositRequirements &&
+      !client.transactionHistory?.some(
+        (tx) => tx.type !== "Deposit" && tx.type !== "Payment" && tx.amount < 0
+      );
 
     // Standardize field names to match what the service expects
     const paymentData = {
@@ -172,47 +224,44 @@ exports.recordPayment = async (req, res, next) => {
       relatedBillingId: req.body.relatedBillingId,
     };
 
-    // Check if client only has monthly billing charges
-    const hasOnlyMonthlyBillingCharges =
-      client.monthlyBilling?.some((b) => b.status !== "Paid") &&
-      !client.transactionHistory?.some(
-        (tx) =>
-          tx.type !== "Share Due" &&
-          tx.type !== "Payment" &&
-          tx.type !== "Deposit" &&
-          tx.amount < 0
-      );
-
-    // Enhanced validation when client only has monthly billing charges
-    if (hasOnlyMonthlyBillingCharges) {
+    // CASE 1: When only monthly billings exist, association is mandatory
+    if (hasUnpaidBillings && !hasDepositRequirements) {
       if (!paymentData.relatedBillingId) {
         return next(
           new AppError(
-            "This client only has monthly billing charges. Payment must be associated with a billing period.",
+            "This client has unpaid monthly billings. Payment must be associated with a billing period.",
             400
           )
         );
       }
+    }
 
-      // Validate the billing ID is a number
-      const billingId = parseInt(paymentData.relatedBillingId, 10);
-      if (isNaN(billingId)) {
+    // CASE 2: When only deposit requirements exist, allocation is mandatory
+    if (hasDepositRequirements && !hasUnpaidBillings) {
+      if (
+        !paymentData.depositPayment ||
+        !paymentData.depositAmount ||
+        paymentData.depositAmount <= 0
+      ) {
         return next(
           new AppError(
-            `Invalid billing ID format: ${paymentData.relatedBillingId}`,
+            "This client has deposit requirements. Payment must be allocated to deposits.",
             400
           )
         );
       }
+    }
 
-      // Ensure the ID exists in the client's billings
-      const billingExists = client.monthlyBilling.some(
-        (b) => b.id === billingId
-      );
-      if (!billingExists) {
+    // CASE 3: When both exist, at least one allocation is required
+    if (hasUnpaidBillings && hasDepositRequirements) {
+      const hasBillingAllocation = !!paymentData.relatedBillingId;
+      const hasDepositAllocation =
+        paymentData.depositPayment && paymentData.depositAmount > 0;
+
+      if (!hasBillingAllocation && !hasDepositAllocation) {
         return next(
           new AppError(
-            `Billing with ID ${billingId} not found for this client`,
+            "This client has both unpaid billings and deposit requirements. Payment must be allocated to at least one of these.",
             400
           )
         );
@@ -259,6 +308,52 @@ exports.recordPayment = async (req, res, next) => {
       paymentData.relatedBillingId = billingId;
     }
 
+    // Validate deposit details if provided
+    if (paymentData.depositPayment) {
+      if (
+        !paymentData.depositType ||
+        !["security", "additional"].includes(paymentData.depositType)
+      ) {
+        return next(
+          new AppError(
+            "Valid deposit type (security or additional) is required for deposit payments",
+            400
+          )
+        );
+      }
+
+      if (!paymentData.depositAmount || paymentData.depositAmount <= 0) {
+        return next(
+          new AppError(
+            "Valid deposit amount is required for deposit payments",
+            400
+          )
+        );
+      }
+
+      // Check that deposit amount doesn't exceed shortfall
+      const maxAmount =
+        paymentData.depositType === "security"
+          ? securityDepositShortfall
+          : additionalDepositShortfall;
+
+      if (paymentData.depositAmount > maxAmount) {
+        return next(
+          new AppError(
+            `Deposit amount exceeds the remaining ${paymentData.depositType} deposit requirement of ${maxAmount}`,
+            400
+          )
+        );
+      }
+
+      // Check that deposit amount doesn't exceed payment amount
+      if (paymentData.depositAmount > paymentData.amount) {
+        return next(
+          new AppError("Deposit amount cannot exceed total payment amount", 400)
+        );
+      }
+    }
+
     // Record the payment
     const updatedClient = await clientBillingService.recordPayment(
       clientId,
@@ -270,9 +365,7 @@ exports.recordPayment = async (req, res, next) => {
       status: "success",
       data: {
         client: updatedClient,
-        message: paymentData.relatedBillingId
-          ? "Payment recorded and associated with billing period"
-          : "Payment recorded successfully",
+        message: generateSuccessMessage(paymentData),
       },
     });
   } catch (error) {

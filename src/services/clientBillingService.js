@@ -12,7 +12,29 @@ const { AppError } = require("../middlewares/errorHandler");
 const PDFDocument = require("pdfkit");
 const fs = require("fs");
 const path = require("path");
+/**
+ * Generate default remarks for a payment based on allocation
+ */
+function generateDefaultRemarks(paymentData, unpaidBillings) {
+  let remarks = `Payment received - ${paymentData.paymentMethod}`;
 
+  if (paymentData.relatedBillingId) {
+    const billing = unpaidBillings.find(
+      (b) => b.id === parseInt(paymentData.relatedBillingId)
+    );
+    if (billing) {
+      remarks = `Payment for ${billing.label} billing`;
+
+      if (paymentData.depositPayment) {
+        remarks += ` and ${paymentData.depositType} deposit`;
+      }
+    }
+  } else if (paymentData.depositPayment) {
+    remarks = `Payment for ${paymentData.depositType} deposit`;
+  }
+
+  return remarks;
+}
 /**
  * Service for client billing operations
  */
@@ -643,13 +665,14 @@ class ClientBillingService {
   }
 
   /**
+   * 08/03
    * Record a payment for a client
    * @param {number} clientId - Client ID
    * @param {Object} paymentData - Payment details
    * @returns {Object} - Updated client data
    */
   async recordPayment(clientId, paymentData) {
-    // Validate payment data before processing
+    // Basic validation of payment data
     if (!paymentData || typeof paymentData !== "object") {
       throw new AppError("Invalid payment data", 400);
     }
@@ -665,41 +688,12 @@ class ClientBillingService {
       throw new AppError("Payment method is required", 400);
     }
 
-    if (paymentData.depositPayment === true) {
-      if (
-        !paymentData.depositType ||
-        !["security", "additional"].includes(paymentData.depositType)
-      ) {
-        throw new AppError(
-          "Valid deposit type is required for deposit payments",
-          400
-        );
-      }
-
-      if (
-        isNaN(parseFloat(paymentData.depositAmount)) ||
-        parseFloat(paymentData.depositAmount) <= 0
-      ) {
-        throw new AppError("Deposit amount must be a positive number", 400);
-      }
-
-      if (
-        parseFloat(paymentData.depositAmount) > parseFloat(paymentData.amount)
-      ) {
-        throw new AppError(
-          "Deposit amount cannot exceed total payment amount",
-          400
-        );
-      }
-    }
-
-    // Define context variables outside the try block to ensure they're available in catch
+    // Define context variables outside the try block for error handling
     let hasDepositRequirements = false;
-    let hasNonDepositCharges = false;
-    let hasOnlyDepositRequirements = false;
+    let hasMonthlyBillings = false;
     let unpaidBillings = [];
-    let hasOtherCharges = false;
-    let hasOnlyMonthlyBillingCharges = false;
+    let securityDepositShortfall = 0;
+    let additionalDepositShortfall = 0;
 
     const transaction = await sequelize.transaction();
 
@@ -716,7 +710,7 @@ class ClientBillingService {
       });
 
       // Calculate deposit shortfalls
-      const securityDepositShortfall = deposit
+      securityDepositShortfall = deposit
         ? Math.max(
             0,
             parseFloat(deposit.security_required) -
@@ -724,7 +718,7 @@ class ClientBillingService {
           )
         : 0;
 
-      const additionalDepositShortfall = deposit
+      additionalDepositShortfall = deposit
         ? Math.max(
             0,
             parseFloat(deposit.additional_required) -
@@ -735,41 +729,19 @@ class ClientBillingService {
       hasDepositRequirements =
         securityDepositShortfall > 0 || additionalDepositShortfall > 0;
 
-      try {
-        // Count non-deposit charges to determine if there are pending non-deposit charges
-        const nonDepositCharges = await ClientTransaction.findAll({
-          where: {
-            client_id: clientId,
-            type: {
-              [Op.notIn]: ["Deposit", "Payment"], // Using imported Op
-            },
+      // Get unpaid billings
+      unpaidBillings = await ClientBilling.findAll({
+        where: {
+          client_id: clientId,
+          status: {
+            [Op.ne]: "Paid",
           },
-          transaction,
-        });
+        },
+        transaction,
+      });
 
-        hasNonDepositCharges =
-          nonDepositCharges.length > 0 &&
-          nonDepositCharges.reduce(
-            (sum, tx) => sum + Math.abs(parseFloat(tx.amount)),
-            0
-          ) > 0;
-      } catch (error) {
-        console.warn("Error checking for non-deposit charges:", error);
-        // Fallback: Assume there might be non-deposit charges
-        hasNonDepositCharges = true;
-      }
+      hasMonthlyBillings = unpaidBillings.length > 0;
 
-      // If client only has deposit requirements and no other charges,
-      // payment must be allocated to deposits
-      hasOnlyDepositRequirements =
-        hasDepositRequirements && !hasNonDepositCharges;
-
-      if (hasOnlyDepositRequirements && !paymentData.depositPayment) {
-        throw new AppError(
-          "This client only has deposit requirements. Payment must be allocated to deposits.",
-          400
-        );
-      }
       // Get the current balance
       const lastTransaction = await ClientTransaction.findOne({
         where: { client_id: clientId },
@@ -784,73 +756,6 @@ class ClientBillingService {
         ? parseFloat(lastTransaction.balance_after)
         : 0;
 
-      // Check for monthly billing requirements
-      if (currentBalance > 0) {
-        // Check if client has unpaid billing records
-        unpaidBillings = await ClientBilling.findAll({
-          where: {
-            client_id: clientId,
-            status: {
-              [Op.ne]: "Paid",
-            },
-          },
-          transaction,
-        });
-
-        try {
-          // Check if client has any non-Share Due charges (excluding payments and deposits)
-          const nonShareDueCharges = await ClientTransaction.findAll({
-            where: {
-              client_id: clientId,
-              type: {
-                [Op.notIn]: ["Share Due", "Payment", "Deposit"],
-              },
-              amount: {
-                [Op.lt]: 0, // Only consider negative amounts (charges)
-              },
-            },
-            transaction,
-          });
-
-          hasOtherCharges = nonShareDueCharges.length > 0;
-
-          // Client only has monthly billing charges if they have unpaid billings and no other charge types
-          hasOnlyMonthlyBillingCharges =
-            unpaidBillings.length > 0 && !hasOtherCharges;
-
-          // If client only has monthly billing charges, payment must be associated with a billing
-          if (hasOnlyMonthlyBillingCharges) {
-            // Add enhanced logging for debugging
-            console.log("Billing validation:", {
-              receivedId: paymentData.relatedBillingId,
-              parsedId: parseInt(paymentData.relatedBillingId),
-              isValid: !isNaN(parseInt(paymentData.relatedBillingId)),
-            });
-
-            if (
-              !paymentData.relatedBillingId ||
-              isNaN(parseInt(paymentData.relatedBillingId))
-            ) {
-              throw new Error(
-                `This client only has monthly billing charges. Payment must be associated with a valid billing period. Received: ${paymentData.relatedBillingId}`
-              );
-            }
-          }
-        } catch (error) {
-          if (
-            error.message &&
-            error.message.includes("only has monthly billing charges")
-          ) {
-            throw error; // Re-throw our validation error
-          }
-
-          console.warn("Error checking for other charge types:", error);
-          // Fallback to more permissive approach
-          hasOtherCharges = true;
-          hasOnlyMonthlyBillingCharges = false;
-        }
-      }
-
       // For payments, we decrease the balance (client owes less)
       const paymentAmount = parseFloat(paymentData.amount);
       let depositAmount = 0;
@@ -860,47 +765,41 @@ class ClientBillingService {
         depositAmount = parseFloat(paymentData.depositAmount);
 
         if (!deposit) {
+          // Create a new deposit record if it doesn't exist
           deposit = await ClientDeposit.create(
             {
               client_id: clientId,
-              security_required: 0,
-              security_paid: 0,
-              additional_required: 0,
-              additional_paid: 0,
+              security_required:
+                paymentData.depositType === "security" ? depositAmount : 0,
+              security_paid:
+                paymentData.depositType === "security" ? depositAmount : 0,
+              additional_required:
+                paymentData.depositType === "additional" ? depositAmount : 0,
+              additional_paid:
+                paymentData.depositType === "additional" ? depositAmount : 0,
+              last_deposit_date: paymentData.date || new Date(),
             },
             { transaction }
           );
-        }
-
-        // Update deposit paid amount based on type
-        if (paymentData.depositType === "security") {
-          if (depositAmount > securityDepositShortfall) {
-            throw new AppError(
-              `Maximum security deposit needed is ${securityDepositShortfall}`,
-              400
-            );
+        } else {
+          // Update existing deposit record based on deposit type
+          if (paymentData.depositType === "security") {
+            deposit.security_paid =
+              parseFloat(deposit.security_paid) + depositAmount;
+          } else {
+            deposit.additional_paid =
+              parseFloat(deposit.additional_paid) + depositAmount;
           }
-          deposit.security_paid =
-            parseFloat(deposit.security_paid) + depositAmount;
-        } else if (paymentData.depositType === "additional") {
-          if (depositAmount > additionalDepositShortfall) {
-            throw new AppError(
-              `Maximum additional deposit needed is ${additionalDepositShortfall}`,
-              400
-            );
-          }
-          deposit.additional_paid =
-            parseFloat(deposit.additional_paid) + depositAmount;
-        }
 
-        deposit.last_deposit_date = paymentData.date || new Date();
-        await deposit.save({ transaction });
+          deposit.last_deposit_date = paymentData.date || new Date();
+          await deposit.save({ transaction });
+        }
       }
 
-      // Full payment amount reduces the balance regardless of deposit allocation
+      // Calculate the new balance after payment
       const newBalance = Math.max(0, currentBalance - paymentAmount);
 
-      // Create the payment transaction with the referenceNumber field
+      // Create the payment transaction
       const paymentTransaction = await ClientTransaction.create(
         {
           client_id: clientId,
@@ -911,7 +810,7 @@ class ClientBillingService {
           date: paymentData.date || new Date(),
           remarks:
             paymentData.remarks ||
-            `Payment received - ${paymentData.paymentMethod}`,
+            generateDefaultRemarks(paymentData, unpaidBillings),
           reference_number: paymentData.referenceNumber,
           payment_method: paymentData.paymentMethod,
           related_billing_id: paymentData.relatedBillingId || null,
@@ -939,13 +838,6 @@ class ClientBillingService {
         if (!billing) {
           throw new AppError("Related billing record not found", 404);
         }
-
-        // Check if this payment is for a multi-currency billing
-        const hasMultipleCurrencies =
-          (await ClientBillingCurrency.count({
-            where: { billing_id: relatedBillingId },
-            transaction,
-          })) > 0;
 
         // Get total payments made for this billing (including the current one)
         const billingPayments = await ClientTransaction.findAll({
@@ -979,13 +871,6 @@ class ClientBillingService {
         // Update the billing status
         billing.status = newStatus;
         await billing.save({ transaction });
-
-        // If the billing is fully paid, you may want to log this event
-        if (newStatus === "Paid") {
-          console.log(
-            `Billing ID ${relatedBillingId} marked as Paid. Payment ID: ${paymentTransaction.id}`
-          );
-        }
       }
 
       await transaction.commit();
@@ -1003,14 +888,12 @@ class ClientBillingService {
         paymentData: JSON.stringify(paymentData),
         context: {
           hasDepositRequirements,
-          hasNonDepositCharges,
-          hasOnlyDepositRequirements,
-          unpaidBillingCount: Array.isArray(unpaidBillings)
-            ? unpaidBillings.length
-            : "unknown",
-          hasOtherCharges: hasOtherCharges || false,
-          hasOnlyMonthlyBillingCharges: hasOnlyMonthlyBillingCharges || false,
+          hasMonthlyBillings,
+          unpaidBillingCount: unpaidBillings.length,
+          securityDepositShortfall,
+          additionalDepositShortfall,
           providedRelatedBillingId: paymentData.relatedBillingId || "none",
+          providedDepositAllocation: paymentData.depositPayment ? "yes" : "no",
         },
       });
 
