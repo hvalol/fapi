@@ -172,6 +172,93 @@ exports.recordPayment = async (req, res, next) => {
       relatedBillingId: req.body.relatedBillingId,
     };
 
+    // Check if client only has monthly billing charges
+    const hasOnlyMonthlyBillingCharges =
+      client.monthlyBilling?.some((b) => b.status !== "Paid") &&
+      !client.transactionHistory?.some(
+        (tx) =>
+          tx.type !== "Share Due" &&
+          tx.type !== "Payment" &&
+          tx.type !== "Deposit" &&
+          tx.amount < 0
+      );
+
+    // Enhanced validation when client only has monthly billing charges
+    if (hasOnlyMonthlyBillingCharges) {
+      if (!paymentData.relatedBillingId) {
+        return next(
+          new AppError(
+            "This client only has monthly billing charges. Payment must be associated with a billing period.",
+            400
+          )
+        );
+      }
+
+      // Validate the billing ID is a number
+      const billingId = parseInt(paymentData.relatedBillingId, 10);
+      if (isNaN(billingId)) {
+        return next(
+          new AppError(
+            `Invalid billing ID format: ${paymentData.relatedBillingId}`,
+            400
+          )
+        );
+      }
+
+      // Ensure the ID exists in the client's billings
+      const billingExists = client.monthlyBilling.some(
+        (b) => b.id === billingId
+      );
+      if (!billingExists) {
+        return next(
+          new AppError(
+            `Billing with ID ${billingId} not found for this client`,
+            400
+          )
+        );
+      }
+    }
+
+    // Additional validation for billing relationship if provided
+    if (paymentData.relatedBillingId) {
+      // Convert to number for consistent comparison
+      const billingId = parseInt(paymentData.relatedBillingId, 10);
+
+      if (isNaN(billingId)) {
+        return next(
+          new AppError(
+            `Invalid billing ID format: ${paymentData.relatedBillingId}`,
+            400
+          )
+        );
+      }
+
+      // Validate that the billing ID belongs to this client
+      const billing = client.monthlyBilling.find((b) => b.id === billingId);
+
+      if (!billing) {
+        return next(
+          new AppError(
+            "The selected billing period does not exist or does not belong to this client",
+            400
+          )
+        );
+      }
+
+      // Cannot associate payment with a fully paid billing
+      if (billing.status === "Paid") {
+        return next(
+          new AppError(
+            "Cannot associate payment with a fully paid billing",
+            400
+          )
+        );
+      }
+
+      // Store the validated numeric ID
+      paymentData.relatedBillingId = billingId;
+    }
+
     // Record the payment
     const updatedClient = await clientBillingService.recordPayment(
       clientId,

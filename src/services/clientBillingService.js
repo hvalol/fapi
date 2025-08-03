@@ -256,11 +256,26 @@ class ClientBillingService {
           }))
         : [];
 
-      // Format monthly billing for the UI with currency details
+      // Calculate billing payments by related billing ID
+      const billingPayments = {};
+      if (rawClient.transactions) {
+        rawClient.transactions
+          .filter((t) => t.type === "Payment" && t.related_billing_id)
+          .forEach((payment) => {
+            const billingId = payment.related_billing_id;
+            if (!billingPayments[billingId]) {
+              billingPayments[billingId] = 0;
+            }
+            billingPayments[billingId] += parseFloat(payment.amount || 0);
+          });
+      }
+
+      // Format monthly billing for the UI with currency details and payment info
       const monthlyBilling = rawClient.billings
         ? rawClient.billings.map((b) => {
             // Ensure we include the currency details
             const currencyDetails = b.currencyDetails || [];
+            const paidAmount = billingPayments[b.id] || 0;
 
             return {
               id: b.id,
@@ -272,6 +287,12 @@ class ClientBillingService {
               shareAmount: b.share_amount, // This is in USD
               datePosted: b.date_posted,
               status: b.status,
+              // Include payment info
+              paidAmount: paidAmount,
+              remainingAmount: Math.max(
+                0,
+                parseFloat(b.final_amount) - paidAmount
+              ),
               // Include currency details for multi-currency support
               hasMultipleCurrencies: currencyDetails.length > 0,
               currencyDetails: currencyDetails.map((cd) => ({
@@ -777,70 +798,56 @@ class ClientBillingService {
         });
 
         try {
-          const otherCharges = await ClientTransaction.findAll({
+          // Check if client has any non-Share Due charges (excluding payments and deposits)
+          const nonShareDueCharges = await ClientTransaction.findAll({
             where: {
               client_id: clientId,
               type: {
                 [Op.notIn]: ["Share Due", "Payment", "Deposit"],
               },
               amount: {
-                [Op.lt]: 0, // Only charges (negative amounts)
+                [Op.lt]: 0, // Only consider negative amounts (charges)
               },
             },
             transaction,
           });
 
-          hasOtherCharges = otherCharges.length > 0;
+          hasOtherCharges = nonShareDueCharges.length > 0;
+
+          // Client only has monthly billing charges if they have unpaid billings and no other charge types
+          hasOnlyMonthlyBillingCharges =
+            unpaidBillings.length > 0 && !hasOtherCharges;
+
+          // If client only has monthly billing charges, payment must be associated with a billing
+          if (hasOnlyMonthlyBillingCharges) {
+            // Add enhanced logging for debugging
+            console.log("Billing validation:", {
+              receivedId: paymentData.relatedBillingId,
+              parsedId: parseInt(paymentData.relatedBillingId),
+              isValid: !isNaN(parseInt(paymentData.relatedBillingId)),
+            });
+
+            if (
+              !paymentData.relatedBillingId ||
+              isNaN(parseInt(paymentData.relatedBillingId))
+            ) {
+              throw new Error(
+                `This client only has monthly billing charges. Payment must be associated with a valid billing period. Received: ${paymentData.relatedBillingId}`
+              );
+            }
+          }
         } catch (error) {
-          console.warn("Error checking for other charges:", error);
-          // Be cautious and assume there might be other charges
+          if (
+            error.message &&
+            error.message.includes("only has monthly billing charges")
+          ) {
+            throw error; // Re-throw our validation error
+          }
+
+          console.warn("Error checking for other charge types:", error);
+          // Fallback to more permissive approach
           hasOtherCharges = true;
-        }
-
-        // If client only has monthly billing charges and no billing association provided
-        hasOnlyMonthlyBillingCharges =
-          unpaidBillings.length > 0 &&
-          !hasOtherCharges &&
-          !hasDepositRequirements;
-
-        if (hasOnlyMonthlyBillingCharges) {
-          // Check if the relatedBillingId is either undefined, null, NaN, or not a valid ID
-          const relatedBillingId = paymentData.relatedBillingId;
-          const validRelatedBillingId =
-            relatedBillingId !== undefined &&
-            relatedBillingId !== null &&
-            !isNaN(parseInt(relatedBillingId, 10)) &&
-            parseInt(relatedBillingId, 10) > 0;
-
-          console.log("Billing validation:", {
-            receivedId: relatedBillingId,
-            parsedId: parseInt(relatedBillingId, 10),
-            isValid: validRelatedBillingId,
-          });
-
-          if (!validRelatedBillingId) {
-            throw new AppError(
-              `This client only has monthly billing charges. Payment must be associated with a valid billing period. Received: ${relatedBillingId}`,
-              400
-            );
-          }
-
-          // Verify that the provided billing ID actually exists and belongs to this client
-          const billingId = parseInt(relatedBillingId, 10);
-          const billingExists = await ClientBilling.findOne({
-            where: {
-              id: billingId,
-              client_id: clientId,
-            },
-            transaction,
-          });
-
-          if (!billingExists) {
-            throw new AppError(
-              `The selected billing period (ID: ${billingId}) is invalid or does not belong to this client.`,
-              400
-            );
-          }
+          hasOnlyMonthlyBillingCharges = false;
         }
       }
 
@@ -891,7 +898,6 @@ class ClientBillingService {
       }
 
       // Full payment amount reduces the balance regardless of deposit allocation
-
       const newBalance = Math.max(0, currentBalance - paymentAmount);
 
       // Create the payment transaction with the referenceNumber field
@@ -899,7 +905,7 @@ class ClientBillingService {
         {
           client_id: clientId,
           type: "Payment",
-          amount: paymentAmount, // Positive amount for payments
+          amount: paymentAmount,
           balance_before: currentBalance,
           balance_after: newBalance,
           date: paymentData.date || new Date(),
@@ -915,36 +921,70 @@ class ClientBillingService {
 
       // Update billing status if this payment is related to a specific billing
       if (paymentData.relatedBillingId) {
-        const billing = await ClientBilling.findByPk(
-          paymentData.relatedBillingId,
-          { transaction }
+        const relatedBillingId = parseInt(paymentData.relatedBillingId);
+
+        if (isNaN(relatedBillingId)) {
+          throw new AppError("Invalid billing ID provided", 400);
+        }
+
+        // Find the related billing record
+        const billing = await ClientBilling.findOne({
+          where: {
+            id: relatedBillingId,
+            client_id: clientId,
+          },
+          transaction,
+        });
+
+        if (!billing) {
+          throw new AppError("Related billing record not found", 404);
+        }
+
+        // Check if this payment is for a multi-currency billing
+        const hasMultipleCurrencies =
+          (await ClientBillingCurrency.count({
+            where: { billing_id: relatedBillingId },
+            transaction,
+          })) > 0;
+
+        // Get total payments made for this billing (including the current one)
+        const billingPayments = await ClientTransaction.findAll({
+          where: {
+            client_id: clientId,
+            type: "Payment",
+            related_billing_id: relatedBillingId,
+          },
+          transaction,
+        });
+
+        // Calculate total payments including the current one
+        const totalPayments = billingPayments.reduce(
+          (sum, payment) => sum + parseFloat(payment.amount),
+          0
         );
 
-        if (billing) {
-          // Get all payments for this billing
-          const billingPayments = await ClientTransaction.findAll({
-            where: {
-              client_id: clientId,
-              type: "Payment",
-              related_billing_id: billing.id,
-            },
-            transaction,
-          });
+        // Get the final amount of the billing
+        const billingAmount = parseFloat(billing.final_amount);
 
-          const totalPaid = billingPayments.reduce(
-            (sum, payment) => sum + parseFloat(payment.amount),
-            0
+        // Determine the new billing status
+        let newStatus;
+        if (totalPayments >= billingAmount) {
+          newStatus = "Paid";
+        } else if (totalPayments > 0) {
+          newStatus = "Partially Paid";
+        } else {
+          newStatus = "Unpaid";
+        }
+
+        // Update the billing status
+        billing.status = newStatus;
+        await billing.save({ transaction });
+
+        // If the billing is fully paid, you may want to log this event
+        if (newStatus === "Paid") {
+          console.log(
+            `Billing ID ${relatedBillingId} marked as Paid. Payment ID: ${paymentTransaction.id}`
           );
-
-          // Update billing status based on payment amount
-          if (totalPaid >= parseFloat(billing.final_amount)) {
-            billing.status = "Paid";
-          } else if (totalPaid > 0) {
-            billing.status = "Partially Paid";
-          }
-
-          // Save the updated billing record
-          await billing.save({ transaction });
         }
       }
 
@@ -961,7 +1001,6 @@ class ClientBillingService {
         errorMessage: error.message,
         errorStack: error.stack,
         paymentData: JSON.stringify(paymentData),
-        // Add validation context to help diagnose validation issues
         context: {
           hasDepositRequirements,
           hasNonDepositCharges,
