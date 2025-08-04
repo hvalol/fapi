@@ -262,7 +262,9 @@ class ClientBillingService {
         ? rawClient.transactions.filter((t) => t.type === "Payment")
         : [];
       const lastPaymentDate =
-        paymentTransactions.length > 0 ? paymentTransactions[0].date : null;
+        paymentTransactions.length > 0
+          ? paymentTransactions[0].createdAt
+          : null;
 
       // Format transactions for the UI
       const transactionHistory = rawClient.transactions
