@@ -10,6 +10,8 @@ const ClientBilling = require("./ClientBilling");
 const ClientTransaction = require("./ClientTransaction");
 const ClientDeposit = require("./ClientDeposit");
 const ClientBillingCurrency = require("./ClientBillingCurrency");
+const ZenithGame = require("./ZenithGame");
+const ZenithVendor = require("./ZenithVendor");
 
 // Client-User Association
 Client.hasMany(User, { foreignKey: "client_id", as: "users" });
@@ -64,7 +66,7 @@ ClientDeposit.belongsTo(Client, { foreignKey: "client_id" });
 Agent.belongsTo(User, { foreignKey: "user_id", as: "user" });
 User.hasOne(Agent, { foreignKey: "user_id", as: "agent" });
 
-// Add this to the associations section
+// ClientBilling-ClientBillingCurrency
 ClientBilling.hasMany(ClientBillingCurrency, {
   foreignKey: "billing_id",
   as: "currencyDetails",
@@ -73,6 +75,9 @@ ClientBillingCurrency.belongsTo(ClientBilling, {
   foreignKey: "billing_id",
 });
 
+// Vendor-Game
+ZenithVendor.hasMany(ZenithGame, { foreignKey: "vendor_id", as: "games" });
+ZenithGame.belongsTo(ZenithVendor, { foreignKey: "vendor_id", as: "vendor" });
 module.exports = {
   sequelize,
   User,
@@ -85,4 +90,6 @@ module.exports = {
   ClientTransaction,
   ClientDeposit,
   ClientBillingCurrency,
+  ZenithGame,
+  ZenithVendor,
 };

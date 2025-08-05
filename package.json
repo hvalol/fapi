@@ -12,7 +12,8 @@
     "migrate:direct": "node src/scripts/direct-migration.js",
     "migrate:rollback": "node src/migrations/index.js --rollback",
     "test": "echo \"No tests specified yet\"",
-    "cleanup-db": "node src/scripts/cleanup-indexes.js"
+    "cleanup-db": "node src/scripts/cleanup-indexes.js",
+    "seed:zenithVendor": "node src/seeders/zenithVendorSeed.js"
   },
   "repository": {
     "type": "git",

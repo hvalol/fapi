@@ -1,5 +1,6 @@
 // src/seeders/seed.js
 const seedClientBilling = require("./clientBillingSeed");
+const seedZenithVendors = require("./zenithVendorSeed");
 
 const {
   User,
