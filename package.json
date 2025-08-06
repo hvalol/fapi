@@ -13,7 +13,8 @@
     "migrate:rollback": "node src/migrations/index.js --rollback",
     "test": "echo \"No tests specified yet\"",
     "cleanup-db": "node src/scripts/cleanup-indexes.js",
-    "seed:zenithVendor": "node src/seeders/zenithVendorSeed.js"
+    "seed:zenithVendor": "node src/seeders/zenithVendorSeed.js",
+    "seed:zenithGame": "node src/seeders/zenithGameSeed.js"
   },
   "repository": {
     "type": "git",

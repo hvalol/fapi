@@ -1,4 +1,4 @@
-const { ZenithVendor } = require("../models");
+const { ZenithVendor, ZenithGame } = require("../models");
 const { AppError } = require("../middlewares/errorHandler");
 
 /**

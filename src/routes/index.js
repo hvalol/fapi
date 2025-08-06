@@ -15,7 +15,7 @@ router.use("/users", userRoutes);
 router.use("/clients", clientRoutes);
 router.use("/agents", agentRoutes);
 router.use("/client-billing", clientBillingRoutes);
-router.use("/vendors", zenithRoutes);
+router.use("/zenith", zenithRoutes);
 
 // Add additional routes here as they're implemented
 
