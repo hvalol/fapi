@@ -27,6 +27,10 @@ router.post(
       .optional()
       .isIn(["active", "inactive", "pending"])
       .withMessage("Invalid status"),
+    body("contact_email")
+      .optional()
+      .isEmail()
+      .withMessage("Invalid email format"),
     validateRequest,
   ],
   clientController.createClient
@@ -45,6 +49,10 @@ router.put(
       .optional()
       .isIn(["active", "inactive", "pending"])
       .withMessage("Invalid status"),
+    body("contact_email")
+      .optional()
+      .isEmail()
+      .withMessage("Invalid email format"),
     validateRequest,
   ],
   clientController.updateClient

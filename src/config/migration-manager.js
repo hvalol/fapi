@@ -76,21 +76,21 @@ class MigrationManager {
 
   async runMigrations() {
     try {
+      // Initialize
       await this.init();
-      const executedMigrations = await this.getExecutedMigrations();
-      const migrationFiles = await this.getMigrationFiles();
 
+      // Get executed migrations
+      const executedMigrations = await this.getExecutedMigrations();
       console.log("Executed migrations:", executedMigrations);
+
+      // Get available migration files
+      const migrationFiles = await this.getMigrationFiles();
       console.log("Available migration files:", migrationFiles);
 
+      // Filter migrations that haven't been executed yet
       const pendingMigrations = migrationFiles.filter(
         (file) => !executedMigrations.includes(file)
       );
-
-      if (pendingMigrations.length === 0) {
-        console.log("No pending migrations to run.");
-        return;
-      }
 
       console.log(
         `Found ${pendingMigrations.length} pending migrations to run...`
@@ -98,30 +98,42 @@ class MigrationManager {
 
       // Run each pending migration
       for (const migrationFile of pendingMigrations) {
+        console.log(`Running migration: ${migrationFile}`);
+
+        // Start transaction
+        const transaction = await sequelize.transaction();
+
         try {
-          console.log(`Running migration: ${migrationFile}`);
+          // Import migration file
           const migration = require(path.join(
             this.migrationsDir,
             migrationFile
           ));
 
-          await sequelize.transaction(async (transaction) => {
-            await migration.up(sequelize.getQueryInterface(), sequelize, {
-              transaction,
-            });
-            await this.markMigrationAsExecuted(migrationFile);
-          });
+          // Run up method
+          await migration.up(
+            sequelize.getQueryInterface(),
+            sequelize.Sequelize
+          );
+
+          // Mark as executed
+          await this.markMigrationAsExecuted(migrationFile);
+
+          // Commit transaction
+          await transaction.commit();
 
           console.log(`Migration ${migrationFile} completed successfully.`);
         } catch (error) {
-          console.error(`Error running migration ${migrationFile}:`, error);
-          throw error;
+          // Roll back transaction on error
+          await transaction.rollback();
+          console.error(`Migration ${migrationFile} failed:`, error.message);
+          throw error; // Rethrow to stop migration process
         }
       }
 
       console.log("All migrations completed successfully.");
     } catch (error) {
-      console.error("Migration error:", error);
+      console.error("Migration process failed:", error.message);
       throw error;
     }
   }

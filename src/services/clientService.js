@@ -61,7 +61,7 @@ class ClientService {
    * @returns {Object} Created client
    */
   async createClient(clientData) {
-    const { name, status, onboarding_date } = clientData;
+    const { name, status, onboarding_date, contact_email } = clientData;
 
     // Check if client with same name already exists
     const existingClient = await Client.findOne({ where: { name } });
@@ -69,11 +69,20 @@ class ClientService {
       throw new AppError("Client with this name already exists", 400);
     }
 
+    // Validate email format if provided
+    if (contact_email) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(contact_email)) {
+        throw new AppError("Invalid email format", 400);
+      }
+    }
+
     // Create client
     const client = await Client.create({
       name,
       status: status || "pending",
       onboarding_date: onboarding_date || new Date(),
+      contact_email,
     });
 
     return client;
@@ -92,7 +101,7 @@ class ClientService {
       throw new AppError("Client not found", 404);
     }
 
-    const { name, status, onboarding_date } = clientData;
+    const { name, status, onboarding_date, contact_email } = clientData;
 
     // Check if name is being changed and if it's already in use
     if (name && name !== client.name) {
@@ -102,10 +111,19 @@ class ClientService {
       }
     }
 
+    // Validate email format if provided
+    if (contact_email) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(contact_email)) {
+        throw new AppError("Invalid email format", 400);
+      }
+    }
+
     // Update client fields
     if (name) client.name = name;
     if (status) client.status = status;
     if (onboarding_date) client.onboarding_date = onboarding_date;
+    if (contact_email !== undefined) client.contact_email = contact_email;
 
     await client.save();
 

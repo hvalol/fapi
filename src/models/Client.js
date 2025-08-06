@@ -23,6 +23,15 @@ const Client = sequelize.define(
       allowNull: false,
       defaultValue: DataTypes.NOW,
     },
+    contact_email: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      validate: {
+        isEmail: {
+          msg: "Invalid email format",
+        },
+      },
+    },
   },
   {
     timestamps: true,
