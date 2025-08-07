@@ -153,32 +153,44 @@ class ZenithService {
    * @param {boolean} disabledState - New disabled state
    * @returns {Object} Updated vendor
    */
-  async toggleVendorDisabled(id, disabledState) {
+  async toggleVendorDisabled(req, res, next) {
     try {
-      const vendor = await ZenithVendor.findByPk(id);
+      const id = parseInt(req.params.id);
 
-      if (!vendor) {
-        throw new AppError("Vendor not found", 404);
+      if (isNaN(id)) {
+        return next(new AppError("Invalid vendor ID", 400));
       }
 
-      // Update only the is_disabled field
-      await vendor.update({ is_disabled: disabledState });
+      if (typeof req.body.disabled !== "boolean") {
+        return next(new AppError("disabled field must be a boolean", 400));
+      }
 
-      // Fetch the updated vendor to return with formatted data
-      const updatedVendor = await ZenithVendor.findByPk(id);
-      return this.formatVendorData([updatedVendor])[0];
+      // Get the vendor first to check client_id if user is ClientAdmin
+      const vendor = await zenithService.getVendorById(id);
+
+      // If user is ClientAdmin, check if vendor belongs to their client
+      if (req.user.role === "ClientAdmin") {
+        // TODO: Implement checking of vendor is enabled by admin for this client
+      }
+
+      const updatedVendor = await zenithService.toggleVendorDisabled(
+        id,
+        req.body.disabled
+      );
+
+      const message = req.body.disabled
+        ? "Vendor temporarily disabled successfully"
+        : "Vendor enabled successfully";
+
+      res.json({
+        status: "success",
+        data: {
+          vendor: updatedVendor,
+          message,
+        },
+      });
     } catch (error) {
-      if (error instanceof AppError) {
-        throw error;
-      }
-      console.error(
-        `Error toggling disabled state for vendor with ID ${id}:`,
-        error
-      );
-      throw new AppError(
-        `Failed to toggle vendor disabled state: ${error.message}`,
-        500
-      );
+      next(error);
     }
   }
 

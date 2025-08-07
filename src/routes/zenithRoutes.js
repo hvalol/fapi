@@ -112,7 +112,7 @@ router.delete(
 // Toggle vendor disabled state (generic endpoint)
 router.patch(
   "/vendors/:id/toggle-disabled",
-  authorize("Admin"),
+  authorize("Admin", "ClientAdmin"),
   [
     param("id").isInt().withMessage("Vendor ID must be an integer"),
     body("disabled")
@@ -126,7 +126,7 @@ router.patch(
 // Disable a vendor
 router.post(
   "/vendors/:id/disable",
-  authorize("Admin"),
+  authorize("Admin", "ClientAdmin"),
   [
     param("id").isInt().withMessage("Vendor ID must be an integer"),
     validateRequest,
@@ -137,7 +137,7 @@ router.post(
 // Enable a vendor
 router.post(
   "/vendors/:id/enable",
-  authorize("Admin"),
+  authorize("Admin", "ClientAdmin"),
   [
     param("id").isInt().withMessage("Vendor ID must be an integer"),
     validateRequest,
@@ -338,7 +338,7 @@ router.delete(
 // Toggle game disabled state (generic endpoint)
 router.patch(
   "/:id/toggle-disabled",
-  authorize("Admin"),
+  authorize("Admin", "ClientAdmin"),
   [
     param("id").isInt().withMessage("Game ID must be an integer"),
     body("disabled")
@@ -352,7 +352,7 @@ router.patch(
 // Disable a game
 router.post(
   "/:id/disable",
-  authorize("Admin"),
+  authorize("Admin", "ClientAdmin"),
   [
     param("id").isInt().withMessage("Game ID must be an integer"),
     validateRequest,
@@ -363,7 +363,7 @@ router.post(
 // Enable a game
 router.post(
   "/:id/enable",
-  authorize("Admin"),
+  authorize("Admin", "ClientAdmin"),
   [
     param("id").isInt().withMessage("Game ID must be an integer"),
     validateRequest,
