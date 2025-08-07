@@ -220,25 +220,33 @@ exports.deactivateAgent = async (req, res, next) => {
 
 exports.getAgentHierarchy = async (req, res, next) => {
   try {
-    const rootId = req.query.rootId ? parseInt(req.query.rootId) : null;
-    let clientId = req.query.clientId ? parseInt(req.query.clientId) : null;
-    let status = req.query.status ? req.query.status : "active";
-    // If user is ClientAdmin, restrict to their client
-    if (req.user.role === "ClientAdmin") {
-      clientId = req.user.client_id;
+    let { rootId, clientId, status } = req.query;
+    const user = req.user;
+
+    // For admin users
+    if (user.role === "Admin") {
+      if (!clientId && !rootId) {
+        throw new AppError("Either clientId or rootId must be provided", 400);
+      }
+    }
+    // For client users
+    else {
+      if (!user.client_id) {
+        throw new AppError("User not associated with any client", 403);
+      }
+      // Override clientId with user's client_id for security
+      clientId = user.client_id;
     }
 
     const hierarchy = await agentService.getAgentHierarchy(
-      rootId,
-      clientId,
+      rootId ? parseInt(rootId) : null,
+      clientId ? parseInt(clientId) : null,
       status
     );
 
     res.json({
       status: "success",
-      data: {
-        hierarchy,
-      },
+      data: { hierarchy },
     });
   } catch (error) {
     next(error);

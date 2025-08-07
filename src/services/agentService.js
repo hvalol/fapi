@@ -44,7 +44,11 @@ class AgentService {
 
     // Include client information if requested
     if (filters.includeClient) {
-      include.push({ model: Client, as: "client", attributes: ["id", "name"] });
+      include.push({
+        model: Client,
+        as: "client",
+        attributes: ["id", "name", "status"],
+      });
     }
 
     // Include user information if requested
@@ -699,104 +703,50 @@ class AgentService {
    * @returns {Array} Agent hierarchies
    */
   async getAgentHierarchy(rootId, clientId, status = "active") {
-    let rootAgents = [];
-
     try {
-      // If rootId is provided, ensure it belongs to the client if clientId is also provided
-      if (rootId && clientId) {
-        const rootAgent = await Agent.findOne({
-          where: {
-            id: rootId,
-            client_id: clientId,
-            status,
-          },
-        });
+      const query = { status };
 
-        if (!rootAgent) {
-          throw new AppError(
-            `Agent with ID ${rootId} not found for client ID ${clientId}`,
-            404
-          );
-        }
-        rootAgents = [rootAgent];
-      }
-      // If only rootId is provided (Admin access)
-      else if (rootId) {
-        const rootAgent = await Agent.findByPk(rootId);
-        if (!rootAgent || rootAgent.status !== status) {
-          throw new AppError(
-            `Agent with ID ${rootId} not found  or not ${status}`,
-            404
-          );
-        }
-        rootAgents = [rootAgent];
-      }
-      // If only clientId is provided
-      else if (clientId) {
-        // Get all agents for this client that could be root agents
-        // First, try to find agents that have parent_id = null
-        rootAgents = await Agent.findAll({
-          where: {
-            client_id: clientId,
-            parent_id: null,
-            status,
-          },
-        });
-
-        // If no root agents found for this client
-        if (rootAgents.length === 0) {
-          // Try to find any agents for this client
-          const allClientAgents = await Agent.findAll({
-            where: {
-              client_id: clientId,
-            },
-            order: [["level", "ASC"]], // Get lowest level first
-          });
-
-          if (allClientAgents.length > 0) {
-            // Get minimum level among these agents
-            const minLevel = allClientAgents[0].level;
-
-            // Filter to only include agents at this minimum level
-            rootAgents = allClientAgents.filter(
-              (agent) => agent.level === minLevel
-            );
-
-            // If there are still no agents after filtering, just use the first one
-            if (rootAgents.length === 0) {
-              rootAgents = [allClientAgents[0]];
-            }
-          }
-        }
-      }
-      // No parameters provided - this should only be allowed for Admin users
-      // This block is executed by default for Admin users without specific filtering
-      else {
-        // For security, we'll require at least one parameter to be provided
+      // Remove platform root assumptions
+      if (!rootId && !clientId) {
         throw new AppError("Either rootId or clientId must be provided", 400);
       }
 
-      // If still no agents found, return empty hierarchy
-      if (!rootAgents || rootAgents.length === 0) {
-        return [];
+      if (clientId) {
+        query.client_id = clientId;
       }
 
-      // Build hierarchy for each root agent
-      const hierarchy = [];
-      for (const rootAgent of rootAgents) {
-        // Only include agents from the same client_id in the hierarchy
-        const agentTree = await this.buildAgentTree(
-          rootAgent.id,
-          clientId,
-          status
-        );
-        hierarchy.push(agentTree);
+      if (rootId) {
+        // Get the agent tree starting from rootId
+        const rootAgent = await Agent.findByPk(rootId);
+        if (!rootAgent) {
+          throw new AppError("Root agent not found", 404);
+        }
+        query.client_id = rootAgent.client_id;
       }
 
-      return hierarchy;
+      const agents = await Agent.findAll({
+        where: query,
+        include: [
+          {
+            model: AgentProfile,
+            as: "profile",
+          },
+          {
+            model: AgentSettings,
+            as: "settings",
+            attributes: { exclude: ["api_secret"] },
+          },
+        ],
+        order: [
+          ["level", "ASC"],
+          ["id", "ASC"],
+        ],
+      });
+
+      // Build hierarchy without assuming platform root
+      return this.buildHierarchy(agents, rootId || null);
     } catch (error) {
-      console.error("Error getting agent hierarchy:", error);
-      throw error;
+      throw new AppError(error.message, error.statusCode || 500);
     }
   }
 
@@ -806,66 +756,22 @@ class AgentService {
    * @returns {Object} Agent tree
    * @private
    */
-  async buildAgentTree(agentId, clientId = null, status = "active") {
-    try {
-      // Get agent with all its details
-      let agentQuery = {
-        where: { id: agentId },
-        include: [
-          { model: AgentCommission, as: "commissions" },
-          { model: AgentSettings, as: "settings" },
-          { model: AgentProfile, as: "profile" },
-        ],
-      };
+  buildHierarchy(agents, rootId = null) {
+    // Remove any references to platform root (ID 1)
+    const agentMap = new Map(
+      agents.map((agent) => [agent.id, { ...agent.toJSON(), children: [] }])
+    );
+    const hierarchy = [];
 
-      // If clientId is provided, ensure we only get agents for that client
-      if (clientId) {
-        agentQuery.where.client_id = clientId;
+    for (const agent of agents) {
+      if (agent.parent_id === null || agent.id === rootId) {
+        hierarchy.push(agentMap.get(agent.id));
+      } else if (agentMap.has(agent.parent_id)) {
+        agentMap.get(agent.parent_id).children.push(agentMap.get(agent.id));
       }
-
-      // Add status filter
-      if (status) {
-        agentQuery.where.status = status;
-      }
-
-      const agent = await Agent.findOne(agentQuery);
-
-      if (!agent) {
-        return null;
-      }
-
-      // Convert to plain object to avoid circular references
-      const agentObj = agent.toJSON();
-
-      // Find all children
-      let childrenQuery = { where: { parent_id: agentId } };
-
-      // If clientId is provided, ensure we only get children for that client
-      if (clientId) {
-        childrenQuery.where.client_id = clientId;
-      }
-
-      // Add status filter for children too
-      if (status) {
-        childrenQuery.where.status = status;
-      }
-
-      const children = await Agent.findAll(childrenQuery);
-
-      // Add children recursively
-      agentObj.children = [];
-      for (const child of children) {
-        const childTree = await this.buildAgentTree(child.id, clientId);
-        if (childTree) {
-          agentObj.children.push(childTree);
-        }
-      }
-
-      return agentObj;
-    } catch (error) {
-      console.error(`Error building agent tree for agent ${agentId}:`, error);
-      throw error;
     }
+
+    return rootId ? hierarchy[0] : hierarchy;
   }
 
   /**
