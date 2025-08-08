@@ -369,8 +369,14 @@ class AgentService {
                 : true,
             allowed_games: settings.allowed_games,
             allowed_providers: settings.allowed_providers,
-            max_bet: settings.max_bet,
-            min_bet: settings.min_bet,
+            max_bet:
+              typeof settings.max_bet === "string"
+                ? JSON.parse(settings.max_bet)
+                : settings.max_bet,
+            min_bet:
+              typeof settings.min_bet === "string"
+                ? JSON.parse(settings.min_bet)
+                : settings.min_bet,
           },
           { transaction }
         );
@@ -805,6 +811,53 @@ class AgentService {
       api_key,
       api_secret,
     };
+  }
+  /**
+   * Set bet limits for a specific provider for an agent
+   * @param {number} agentId
+   * @param {number} providerId
+   * @param {number} minBet
+   * @param {number} maxBet
+   */
+  async setProviderBetLimit(agentId, providerId, minBet, maxBet) {
+    const AgentSettings = require("../models/AgentSettings");
+    const settings = await AgentSettings.findOne({
+      where: { agent_id: agentId },
+    });
+    if (!settings) throw new AppError("Agent settings not found", 404);
+
+    // Ensure min_bet and max_bet are objects, not strings
+    let minObj;
+    let maxObj;
+    try {
+      minObj =
+        typeof settings.min_bet === "string"
+          ? JSON.parse(settings.min_bet)
+          : settings.min_bet
+          ? { ...settings.min_bet }
+          : {};
+    } catch (e) {
+      minObj = {};
+    }
+    try {
+      maxObj =
+        typeof settings.max_bet === "string"
+          ? JSON.parse(settings.max_bet)
+          : settings.max_bet
+          ? { ...settings.max_bet }
+          : {};
+    } catch (e) {
+      maxObj = {};
+    }
+
+    if (minBet !== undefined) minObj[providerId] = minBet;
+    if (maxBet !== undefined) maxObj[providerId] = maxBet;
+
+    settings.min_bet = minObj;
+    settings.max_bet = maxObj;
+    await settings.save();
+
+    return settings;
   }
 }
 

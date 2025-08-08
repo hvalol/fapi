@@ -282,3 +282,31 @@ exports.regenerateApiCredentials = async (req, res, next) => {
     next(error);
   }
 };
+
+exports.setProviderBetLimit = async (req, res, next) => {
+  try {
+    const agentId = parseInt(req.params.agentId);
+    const providerId = req.body.providerId;
+    const minBet = req.body.minBet;
+    const maxBet = req.body.maxBet;
+
+    if (!providerId) throw new AppError("Provider ID required", 400);
+
+    const settings = await agentService.setProviderBetLimit(
+      agentId,
+      providerId,
+      minBet,
+      maxBet
+    );
+
+    res.status(200).json({
+      status: "success",
+      data: {
+        min_bet: settings.min_bet,
+        max_bet: settings.max_bet,
+      },
+    });
+  } catch (error) {
+    next(error.statusCode ? error : new AppError(error.message, 500));
+  }
+};

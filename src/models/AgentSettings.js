@@ -48,12 +48,14 @@ const AgentSettings = sequelize.define(
       comment: "JSON array of allowed provider IDs",
     },
     max_bet: {
-      type: DataTypes.DECIMAL(15, 2),
+      type: DataTypes.JSON, // changed from DECIMAL
       allowNull: true,
+      comment: "Object: { [providerId]: value }",
     },
     min_bet: {
-      type: DataTypes.DECIMAL(15, 2),
+      type: DataTypes.JSON, // changed from DECIMAL
       allowNull: true,
+      comment: "Object: { [providerId]: value }",
     },
   },
   {

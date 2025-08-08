@@ -88,4 +88,10 @@ router.post(
   agentController.regenerateApiCredentials
 );
 
+router.post(
+  "/:agentId/bet-limit",
+  authorize("Admin", "ClientAdmin"),
+  require("../controllers/agentController").setProviderBetLimit
+);
+
 module.exports = router;
