@@ -94,7 +94,7 @@ class LogFormatter {
       // Zenith vendor actions
       if (path.includes("/zenith/vendors")) {
         console.log("Zenith vendors path detected:", { path, method });
-        const vendorName = details?.vendor?.name || getName(details);
+        const vendorName = details?.vendor?.gameName || getName(details);
 
         if (path.includes("/toggle-disabled")) {
           return details.disabled
@@ -119,7 +119,7 @@ class LogFormatter {
       // Zenith game actions
       if (path.includes("/zenith") && !path.includes("/vendors")) {
         console.log("Zenith games path detected:", { path, method });
-        const gameName = details?.game?.name || getName(details);
+        const gameName = details?.game?.gameName || getName(details);
 
         if (path.includes("/toggle-disabled")) {
           return details.disabled
