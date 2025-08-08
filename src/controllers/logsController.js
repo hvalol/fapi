@@ -10,7 +10,7 @@ class LogsController {
       const filters = {
         ...(req.query.action && { action: req.query.action }),
         ...(req.query.action_type && { action_type: req.query.action_type }),
-        ...(req.query.admin_id && { admin_id: req.query.admin_id }),
+        ...(req.query.user_id && { admin_id: req.query.user_id }),
         ...(req.query.target_type && { target_type: req.query.target_type }),
         ...(req.query.from_date && {
           created_at: {

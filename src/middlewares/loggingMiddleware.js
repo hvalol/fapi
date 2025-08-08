@@ -82,9 +82,10 @@ const loggingMiddleware = () => async (req, res, next) => {
     const user = parsedData?.data?.user || req.user;
     const user_id = user?.id;
     const client_id = user?.client_id;
+    const username = user?.username;
     const action_type = determineActionType(req);
 
-    console.log("User details:", { user_id, client_id, action_type });
+    console.log("User details:", { user_id, client_id, action_type, username });
 
     const fullPath = `${req.method}_${req.baseUrl}${req.path}`;
     console.log("Constructed action path:", fullPath);
@@ -115,7 +116,7 @@ const loggingMiddleware = () => async (req, res, next) => {
     // Format message
     logData.details.formattedMessage = LogFormatter.formatLogMessage(
       logData.action,
-      { ...req.body, ...parsedData?.data },
+      { ...req.body, ...parsedData?.data, username },
       logData.target_type
     );
 

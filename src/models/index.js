@@ -80,8 +80,8 @@ ClientBillingCurrency.belongsTo(ClientBilling, {
 });
 
 // Admin Logs Associations
-User.hasMany(AdminLogs, { foreignKey: "admin_id", as: "adminLogs" });
-AdminLogs.belongsTo(User, { foreignKey: "admin_id", as: "admin" });
+User.hasMany(AdminLogs, { foreignKey: "user_id", as: "adminLogs" });
+AdminLogs.belongsTo(User, { foreignKey: "user_id", as: "admin" });
 
 // Client Logs Associations
 Client.hasMany(ClientLogs, { foreignKey: "client_id", as: "clientLogs" });

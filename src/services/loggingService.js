@@ -57,20 +57,26 @@ class LoggingService {
 
   static async getAdminLogs({ filters, limit, page }) {
     try {
-      const validatedFilters = {
-        ...filters,
-        action_type: filters.action_type?.toUpperCase(),
-      };
+      // Clean filters: remove undefined/null values and uppercase action_type if present
+      const cleanFilters = Object.entries(filters || {}).reduce(
+        (acc, [key, value]) => {
+          if (value !== undefined && value !== null) {
+            acc[key] = key === "action_type" ? value.toUpperCase() : value;
+          }
+          return acc;
+        },
+        {}
+      );
 
       const logs = await AdminLogs.findAndCountAll({
-        where: validatedFilters,
+        where: cleanFilters,
         limit: Math.min(limit || 10, 100),
         offset: ((page || 1) - 1) * (limit || 10),
         order: [["created_at", "DESC"]],
       });
 
-      // Get usernames for all admin_ids
-      const userIds = [...new Set(logs.rows.map((log) => log.admin_id))];
+      // Get usernames for all user_ids
+      const userIds = [...new Set(logs.rows.map((log) => log.user_id))];
       const users = await Promise.all(
         userIds.map((id) => userService.getUserById(id).catch(() => null))
       );
@@ -82,7 +88,7 @@ class LoggingService {
       // Add username to each log entry
       const enhancedLogs = logs.rows.map((log) => ({
         ...log.toJSON(),
-        username: userMap[log.admin_id] || "Unknown User",
+        username: userMap[log.user_id] || "Unknown User",
       }));
 
       return {
@@ -160,6 +166,51 @@ class LoggingService {
       console.error("Detailed client logs error:", error);
       throw new AppError(
         `Error fetching client logs: ${error.message}`,
+        error.statusCode || 500
+      );
+    }
+  }
+  /**
+   * Get all client logs (no client_id filter)
+   * @param {Object} options
+   * @param {number} options.limit - Number of records to return
+   * @param {number} options.page - Page number
+   */
+  static async getAllClientLogs({ limit, page }) {
+    try {
+      const logs = await ClientLogs.findAndCountAll({
+        limit: Math.min(limit || 10, 100),
+        offset: ((page || 1) - 1) * (limit || 10),
+        order: [["created_at", "DESC"]],
+      });
+
+      // Get usernames for all user_ids
+      const userIds = [
+        ...new Set(logs.rows.map((log) => log.user_id).filter((id) => id)),
+      ];
+      const users = await Promise.all(
+        userIds.map((id) => userService.getUserById(id).catch(() => null))
+      );
+      const userMap = users.reduce((map, user) => {
+        if (user) map[user.id] = user.username;
+        return map;
+      }, {});
+
+      // Add username to each log entry
+      const enhancedLogs = logs.rows.map((log) => ({
+        ...log.toJSON(),
+        username: log.user_id
+          ? userMap[log.user_id] || "Unknown User"
+          : "System",
+      }));
+
+      return {
+        rows: enhancedLogs,
+        count: logs.count,
+      };
+    } catch (error) {
+      throw new AppError(
+        `Error fetching all client logs: ${error.message}`,
         error.statusCode || 500
       );
     }

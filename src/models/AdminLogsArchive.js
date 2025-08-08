@@ -10,9 +10,9 @@ AdminLogsArchive.init(
       primaryKey: true,
       autoIncrement: true,
     },
-    admin_id: {
+    user_id: {
       type: DataTypes.INTEGER,
-      allowNull: false,
+      allowNull: true,
       validate: {
         isInt: true,
       },
