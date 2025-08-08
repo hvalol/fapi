@@ -1,28 +1,34 @@
 const { Model, DataTypes } = require("sequelize");
 const sequelize = require("../config/database");
 
-class AdminLogs extends Model {}
+class ClientLogsArchive extends Model {}
 
-AdminLogs.init(
+ClientLogsArchive.init(
   {
     id: {
       type: DataTypes.INTEGER,
       primaryKey: true,
       autoIncrement: true,
     },
-    admin_id: {
+    client_id: {
       type: DataTypes.INTEGER,
       allowNull: false,
-      validate: {
-        isInt: true,
+      references: {
+        model: "Clients",
+        key: "id",
+      },
+    },
+    user_id: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      references: {
+        model: "Users",
+        key: "id",
       },
     },
     action: {
       type: DataTypes.STRING,
       allowNull: false,
-      validate: {
-        notEmpty: true,
-      },
     },
     action_type: {
       type: DataTypes.ENUM("AUTHENTICATION", "UPDATE", "ACCESS"),
@@ -68,19 +74,20 @@ AdminLogs.init(
     target_id: {
       type: DataTypes.INTEGER,
       allowNull: true,
-      validate: {
-        isInt: true,
-      },
     },
     created_at: {
+      type: DataTypes.DATE,
+      defaultValue: DataTypes.NOW,
+    },
+    archived_at: {
       type: DataTypes.DATE,
       defaultValue: DataTypes.NOW,
     },
   },
   {
     sequelize,
-    modelName: "AdminLogs",
-    tableName: "admin_logs",
+    modelName: "ClientLogsArchive",
+    tableName: "client_logs_archive",
     timestamps: false,
     hooks: {
       beforeValidate: (log) => {
@@ -95,4 +102,4 @@ AdminLogs.init(
   }
 );
 
-module.exports = AdminLogs;
+module.exports = ClientLogsArchive;

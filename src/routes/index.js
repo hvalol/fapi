@@ -8,6 +8,7 @@ const clientBillingRoutes = require("./clientBillingRoutes");
 const zenithRoutes = require("./zenithRoutes");
 const adminBillingRoutes = require("./adminBillingRoutes");
 const clientDashboardRoutes = require("./clientDashboardRoutes");
+const logsRoutes = require("./logsRoutes");
 
 const router = express.Router();
 
@@ -20,6 +21,8 @@ router.use("/client-billing", clientBillingRoutes);
 router.use("/zenith", zenithRoutes);
 router.use("/admin/client-billing", adminBillingRoutes);
 router.use("/client/dashboard", clientDashboardRoutes);
+router.use("/logs", logsRoutes);
+
 // Add additional routes here as they're implemented
 
 module.exports = router;

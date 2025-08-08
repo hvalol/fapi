@@ -226,7 +226,15 @@ class ZenithController {
         return next(new AppError("disabled field must be a boolean", 400));
       }
 
-      const vendor = await zenithService.toggleVendorDisabled(
+      // Get the vendor first to check client_id if user is ClientAdmin
+      const vendor = await zenithService.getVendorById(id);
+
+      // If user is ClientAdmin, check if vendor belongs to their client
+      if (req.user.role === "ClientAdmin") {
+        // TODO: Implement checking of vendor is enabled by admin for this client
+      }
+
+      const updatedVendor = await zenithService.toggleVendorDisabled(
         id,
         req.body.disabled
       );
@@ -238,7 +246,7 @@ class ZenithController {
       res.json({
         status: "success",
         data: {
-          vendor,
+          vendor: updatedVendor,
           message,
         },
       });

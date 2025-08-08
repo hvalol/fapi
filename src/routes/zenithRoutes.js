@@ -4,6 +4,7 @@ const zenithController = require("../controllers/zenithController");
 const { validateRequest } = require("../middlewares/validationMiddleware");
 const { authenticate } = require("../middlewares/authMiddleware");
 const { authorize } = require("../middlewares/roleMiddleware");
+const loggingMiddleware = require("../middlewares/loggingMiddleware");
 
 const router = express.Router();
 
@@ -32,6 +33,7 @@ router.get(
 router.post(
   "/vendors",
   [
+    loggingMiddleware(),
     body("name")
       .notEmpty()
       .withMessage("Vendor name is required")
@@ -67,6 +69,7 @@ router.post(
 router.put(
   "/vendors/:id",
   authorize("Admin"),
+  loggingMiddleware(),
   [
     param("id").isInt().withMessage("Vendor ID must be an integer"),
     body("name")
@@ -102,6 +105,7 @@ router.put(
 router.delete(
   "/vendors/:id",
   authorize("Admin"),
+  loggingMiddleware(),
   [
     param("id").isInt().withMessage("Vendor ID must be an integer"),
     validateRequest,
@@ -113,6 +117,7 @@ router.delete(
 router.patch(
   "/vendors/:id/toggle-disabled",
   authorize("Admin", "ClientAdmin"),
+  loggingMiddleware(),
   [
     param("id").isInt().withMessage("Vendor ID must be an integer"),
     body("disabled")
@@ -127,6 +132,7 @@ router.patch(
 router.post(
   "/vendors/:id/disable",
   authorize("Admin", "ClientAdmin"),
+  loggingMiddleware(),
   [
     param("id").isInt().withMessage("Vendor ID must be an integer"),
     validateRequest,
@@ -138,6 +144,7 @@ router.post(
 router.post(
   "/vendors/:id/enable",
   authorize("Admin", "ClientAdmin"),
+  loggingMiddleware(),
   [
     param("id").isInt().withMessage("Vendor ID must be an integer"),
     validateRequest,
@@ -189,6 +196,7 @@ router.get(
 router.post(
   "/",
   authorize("Admin"),
+  loggingMiddleware(),
   [
     body("gameCode")
       .notEmpty()
@@ -261,6 +269,7 @@ router.post(
 router.put(
   "/:id",
   authorize("Admin"),
+  loggingMiddleware(),
   [
     param("id").isInt().withMessage("Game ID must be an integer"),
     body("gameCode")
@@ -328,6 +337,7 @@ router.put(
 router.delete(
   "/:id",
   authorize("Admin"),
+  loggingMiddleware(),
   [
     param("id").isInt().withMessage("Game ID must be an integer"),
     validateRequest,
@@ -339,6 +349,7 @@ router.delete(
 router.patch(
   "/:id/toggle-disabled",
   authorize("Admin", "ClientAdmin"),
+  loggingMiddleware(),
   [
     param("id").isInt().withMessage("Game ID must be an integer"),
     body("disabled")
@@ -353,6 +364,7 @@ router.patch(
 router.post(
   "/:id/disable",
   authorize("Admin", "ClientAdmin"),
+  loggingMiddleware(),
   [
     param("id").isInt().withMessage("Game ID must be an integer"),
     validateRequest,
@@ -364,6 +376,7 @@ router.post(
 router.post(
   "/:id/enable",
   authorize("Admin", "ClientAdmin"),
+  loggingMiddleware(),
   [
     param("id").isInt().withMessage("Game ID must be an integer"),
     validateRequest,

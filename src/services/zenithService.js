@@ -153,44 +153,31 @@ class ZenithService {
    * @param {boolean} disabledState - New disabled state
    * @returns {Object} Updated vendor
    */
-  async toggleVendorDisabled(req, res, next) {
+  async toggleVendorDisabled(id, disabledState) {
     try {
-      const id = parseInt(req.params.id);
+      const vendor = await ZenithVendor.findByPk(id);
 
-      if (isNaN(id)) {
-        return next(new AppError("Invalid vendor ID", 400));
+      if (!vendor) {
+        throw new AppError("Vendor not found", 404);
       }
 
-      if (typeof req.body.disabled !== "boolean") {
-        return next(new AppError("disabled field must be a boolean", 400));
-      }
+      // Update only the is_disabled field
+      await vendor.update({ is_disabled: disabledState });
 
-      // Get the vendor first to check client_id if user is ClientAdmin
-      const vendor = await zenithService.getVendorById(id);
-
-      // If user is ClientAdmin, check if vendor belongs to their client
-      if (req.user.role === "ClientAdmin") {
-        // TODO: Implement checking of vendor is enabled by admin for this client
-      }
-
-      const updatedVendor = await zenithService.toggleVendorDisabled(
-        id,
-        req.body.disabled
-      );
-
-      const message = req.body.disabled
-        ? "Vendor temporarily disabled successfully"
-        : "Vendor enabled successfully";
-
-      res.json({
-        status: "success",
-        data: {
-          vendor: updatedVendor,
-          message,
-        },
-      });
+      // Return the updated vendor with formatted data
+      return this.formatVendorData([vendor])[0];
     } catch (error) {
-      next(error);
+      if (error instanceof AppError) {
+        throw error;
+      }
+      console.error(
+        `Error toggling disabled state for vendor with ID ${id}:`,
+        error
+      );
+      throw new AppError(
+        `Failed to toggle vendor disabled state: ${error.message}`,
+        500
+      );
     }
   }
 

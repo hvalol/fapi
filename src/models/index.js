@@ -12,6 +12,10 @@ const ClientDeposit = require("./ClientDeposit");
 const ClientBillingCurrency = require("./ClientBillingCurrency");
 const ZenithGame = require("./ZenithGame");
 const ZenithVendor = require("./ZenithVendor");
+const AdminLogs = require("./AdminLogs");
+const ClientLogs = require("./ClientLogs");
+const AdminLogsArchive = require("./AdminLogsArchive");
+const ClientLogsArchive = require("./ClientLogsArchive");
 
 // Client-User Association
 Client.hasMany(User, { foreignKey: "client_id", as: "users" });
@@ -75,6 +79,35 @@ ClientBillingCurrency.belongsTo(ClientBilling, {
   foreignKey: "billing_id",
 });
 
+// Admin Logs Associations
+User.hasMany(AdminLogs, { foreignKey: "admin_id", as: "adminLogs" });
+AdminLogs.belongsTo(User, { foreignKey: "admin_id", as: "admin" });
+
+// Client Logs Associations
+Client.hasMany(ClientLogs, { foreignKey: "client_id", as: "clientLogs" });
+ClientLogs.belongsTo(Client, { foreignKey: "client_id", as: "client" });
+User.hasMany(ClientLogs, { foreignKey: "user_id", as: "userClientLogs" });
+ClientLogs.belongsTo(User, { foreignKey: "user_id", as: "user" });
+
+// Admin Logs Archive Associations
+User.hasMany(AdminLogsArchive, {
+  foreignKey: "admin_id",
+  as: "adminLogsArchive",
+});
+AdminLogsArchive.belongsTo(User, { foreignKey: "admin_id", as: "admin" });
+
+// Client Logs Archive Associations
+Client.hasMany(ClientLogsArchive, {
+  foreignKey: "client_id",
+  as: "clientLogsArchive",
+});
+ClientLogsArchive.belongsTo(Client, { foreignKey: "client_id", as: "client" });
+User.hasMany(ClientLogsArchive, {
+  foreignKey: "user_id",
+  as: "userClientLogsArchive",
+});
+ClientLogsArchive.belongsTo(User, { foreignKey: "user_id", as: "user" });
+
 // Vendor-Game
 ZenithVendor.hasMany(ZenithGame, { foreignKey: "vendor_id", as: "games" });
 ZenithGame.belongsTo(ZenithVendor, { foreignKey: "vendor_id", as: "vendor" });
@@ -92,4 +125,8 @@ module.exports = {
   ClientBillingCurrency,
   ZenithGame,
   ZenithVendor,
+  AdminLogs,
+  ClientLogs,
+  AdminLogsArchive,
+  ClientLogsArchive,
 };

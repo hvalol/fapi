@@ -1,6 +1,7 @@
 const express = require("express");
 const clientDashboardController = require("../controllers/clientDashboardController");
 const authMiddleware = require("../middlewares/authMiddleware");
+
 const router = express.Router();
 
 // Apply authentication middleware to all routes

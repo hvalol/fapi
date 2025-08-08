@@ -6,6 +6,7 @@ const agentService = require("./agentService");
 const clientBillingService = require("./clientBillingService");
 const zenithService = require("./zenithService");
 const clientDashboardService = require("./clientDashboardService");
+const LoggingService = require("./loggingService");
 
 module.exports = {
   authService,
@@ -15,4 +16,5 @@ module.exports = {
   clientBillingService,
   zenithService,
   clientDashboardService,
+  LoggingService,
 };

@@ -5,6 +5,7 @@ const clientController = require("../controllers/clientController");
 const { validateRequest } = require("../middlewares/validationMiddleware");
 const { authenticate } = require("../middlewares/authMiddleware");
 const { authorize } = require("../middlewares/roleMiddleware");
+const loggingMiddleware = require("../middlewares/loggingMiddleware");
 
 const router = express.Router();
 
@@ -22,6 +23,7 @@ router.post(
   "/",
   [
     authorize("Admin"),
+    loggingMiddleware(),
     body("name").notEmpty().withMessage("Client name is required"),
     body("status")
       .optional()
@@ -41,6 +43,7 @@ router.put(
   "/:id",
   [
     authorize("Admin"),
+    loggingMiddleware(),
     body("name")
       .optional()
       .notEmpty()
@@ -59,6 +62,11 @@ router.put(
 );
 
 // Delete client (Admin only)
-router.delete("/:id", authorize("Admin"), clientController.deleteClient);
+router.delete(
+  "/:id",
+  authorize("Admin"),
+  loggingMiddleware(),
+  clientController.deleteClient
+);
 
 module.exports = router;

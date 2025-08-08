@@ -5,6 +5,7 @@ const clientBillingController = require("../controllers/clientBillingController"
 const { validateRequest } = require("../middlewares/validationMiddleware");
 const { authenticate } = require("../middlewares/authMiddleware");
 const { authorize } = require("../middlewares/roleMiddleware");
+const loggingMiddleware = require("../middlewares/loggingMiddleware");
 
 const router = express.Router();
 
@@ -15,17 +16,23 @@ router.use(authenticate);
 router.get(
   "/",
   authorize("Admin"),
+  loggingMiddleware(),
   clientBillingController.getAllClientBilling
 );
 
 // Get client billing by ID (Admin or client's own admin)
-router.get("/:id", clientBillingController.getClientBillingById);
+router.get(
+  "/:id",
+  loggingMiddleware(),
+  clientBillingController.getClientBillingById
+);
 
 // Add charge to client (Admin only)
 router.post(
   "/:id/charges",
   [
     authorize("Admin"),
+    loggingMiddleware(),
     body("type")
       .notEmpty()
       .isIn(["Share Due", "Deposit", "Penalty", "Adjustment"])
@@ -147,6 +154,7 @@ router.post(
   "/:id/payments",
   [
     authorize("Admin"),
+    loggingMiddleware(),
     body("amount")
       .notEmpty()
       .isFloat({ min: 0.01 })
@@ -170,6 +178,7 @@ router.post(
   "/:id/billings",
   [
     authorize("Admin"),
+    loggingMiddleware(),
     body("month")
       .notEmpty()
       .matches(/^\d{4}-\d{2}$/)

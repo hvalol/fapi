@@ -1,5 +1,7 @@
 // src/server.js
 require("dotenv").config();
+require("./scripts/scheduleLogArchival");
+
 const app = require("./app");
 const { sequelize } = require("./models");
 

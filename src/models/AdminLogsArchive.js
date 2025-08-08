@@ -1,9 +1,9 @@
 const { Model, DataTypes } = require("sequelize");
 const sequelize = require("../config/database");
 
-class AdminLogs extends Model {}
+class AdminLogsArchive extends Model {}
 
-AdminLogs.init(
+AdminLogsArchive.init(
   {
     id: {
       type: DataTypes.INTEGER,
@@ -76,11 +76,15 @@ AdminLogs.init(
       type: DataTypes.DATE,
       defaultValue: DataTypes.NOW,
     },
+    archived_at: {
+      type: DataTypes.DATE,
+      defaultValue: DataTypes.NOW,
+    },
   },
   {
     sequelize,
-    modelName: "AdminLogs",
-    tableName: "admin_logs",
+    modelName: "AdminLogsArchive",
+    tableName: "admin_logs_archive",
     timestamps: false,
     hooks: {
       beforeValidate: (log) => {
@@ -95,4 +99,4 @@ AdminLogs.init(
   }
 );
 
-module.exports = AdminLogs;
+module.exports = AdminLogsArchive;

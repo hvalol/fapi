@@ -5,6 +5,7 @@ const userController = require("../controllers/userController");
 const { validateRequest } = require("../middlewares/validationMiddleware");
 const { authenticate } = require("../middlewares/authMiddleware");
 const { authorize } = require("../middlewares/roleMiddleware");
+const loggingMiddleware = require("../middlewares/loggingMiddleware");
 
 const router = express.Router();
 
@@ -22,6 +23,7 @@ router.post(
   "/",
   [
     authorize("Admin"),
+    loggingMiddleware(),
     body("username").notEmpty().withMessage("Username is required"),
     body("password")
       .isLength({ min: 8 })
@@ -39,6 +41,7 @@ router.post(
 router.put(
   "/:id",
   [
+    loggingMiddleware(),
     body("username")
       .optional()
       .notEmpty()
@@ -57,12 +60,18 @@ router.put(
 );
 
 // Delete user (Admin only)
-router.delete("/:id", authorize("Admin"), userController.deleteUser);
+router.delete(
+  "/:id",
+  authorize("Admin"),
+  loggingMiddleware(),
+  userController.deleteUser
+);
 
 // Change password (own user)
 router.post(
   "/change-password",
   [
+    loggingMiddleware(),
     body("currentPassword")
       .notEmpty()
       .withMessage("Current password is required"),

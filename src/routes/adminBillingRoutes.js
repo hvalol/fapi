@@ -4,6 +4,7 @@ const adminBillingController = require("../controllers/adminBillingController");
 const { validateRequest } = require("../middlewares/validationMiddleware");
 const { authenticate } = require("../middlewares/authMiddleware");
 const { authorize } = require("../middlewares/roleMiddleware");
+const loggingMiddleware = require("../middlewares/loggingMiddleware");
 
 const router = express.Router();
 
@@ -12,14 +13,23 @@ router.use(authenticate);
 router.use(authorize("Admin"));
 
 // Get all clients billing summary
-router.get("/", adminBillingController.getAllClientsBillingSummary);
+router.get(
+  "/",
+  loggingMiddleware(),
+  adminBillingController.getAllClientsBillingSummary
+);
 
 // Get detailed billing for a specific client
-router.get("/:id", adminBillingController.getClientBillingDetails);
+router.get(
+  "/:id",
+  loggingMiddleware(),
+  adminBillingController.getClientBillingDetails
+);
 
 // Add charge to client
 router.post(
   "/:id/charges",
+  loggingMiddleware(),
   [
     body("type")
       .notEmpty()
@@ -37,6 +47,7 @@ router.post(
 // Record payment for client
 router.post(
   "/:id/payments",
+  loggingMiddleware(),
   [
     body("amount")
       .notEmpty()
@@ -49,11 +60,16 @@ router.post(
 );
 
 // Generate billing statement for client
-router.get("/:id/statement", adminBillingController.generateBillingStatement);
+router.get(
+  "/:id/statement",
+  loggingMiddleware(),
+  adminBillingController.generateBillingStatement
+);
 
 // Create billing record for client
 router.post(
   "/:id/billings",
+  loggingMiddleware(),
   [
     body("month")
       .notEmpty()

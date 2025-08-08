@@ -5,6 +5,7 @@ const agentController = require("../controllers/agentController");
 const { validateRequest } = require("../middlewares/validationMiddleware");
 const { authenticate } = require("../middlewares/authMiddleware");
 const { authorize } = require("../middlewares/roleMiddleware");
+const loggingMiddleware = require("../middlewares/loggingMiddleware");
 
 const router = express.Router();
 
@@ -37,6 +38,7 @@ router.post(
   "/",
   [
     authorize("Admin", "ClientAdmin"),
+    loggingMiddleware(),
     body("name").notEmpty().withMessage("Agent name is required"),
     body("code").notEmpty().withMessage("Agent code is required"),
     body("client_id").isInt().withMessage("Client ID must be an integer"),
@@ -53,6 +55,7 @@ router.put(
   "/:id",
   [
     authorize("Admin", "ClientAdmin"),
+    loggingMiddleware(),
     // Updated profile validation - removed email, phone, address, contact_person
     body("profile.notes").optional(),
     body("profile.timezone").optional(),
@@ -65,6 +68,7 @@ router.put(
 router.put(
   "/:id/commissions",
   authorize("Admin", "ClientAdmin"),
+  loggingMiddleware(),
   agentController.updateAgentCommissions
 );
 
@@ -72,6 +76,7 @@ router.put(
 router.put(
   "/:id/deactivate",
   authorize("Admin", "ClientAdmin"),
+  loggingMiddleware(),
   agentController.deactivateAgent
 );
 
@@ -79,6 +84,7 @@ router.put(
 router.post(
   "/:id/regenerate-credentials",
   authorize("Admin", "ClientAdmin"),
+  loggingMiddleware(),
   agentController.regenerateApiCredentials
 );
 

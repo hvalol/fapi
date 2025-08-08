@@ -1,6 +1,7 @@
 const { AppError } = require("../middlewares/errorHandler");
 const clientDashboardService = require("../services/clientDashboardService");
-
+const { Op } = require("sequelize");
+const { LoggingService } = require("../services");
 /**
  * Get dashboard summary data for the authenticated client
  */
@@ -106,17 +107,47 @@ exports.getTransactions = async (req, res, next) => {
   }
 };
 
-/**
- * Placeholder for logs data (future implementation)
- */
 exports.getLogs = async (req, res, next) => {
   try {
+    const clientId = req.user.client_id;
+    if (!clientId) {
+      return next(new AppError("No client associated with this user", 400));
+    }
+
+    const filters = {
+      client_id: clientId,
+      // Only add date filters if they exist
+      ...(req.query.from_date && {
+        created_at: {
+          [Op.gte]: new Date(req.query.from_date),
+        },
+      }),
+      ...(req.query.to_date && {
+        created_at: {
+          [Op.lte]: new Date(req.query.to_date),
+        },
+      }),
+      // Only add action_type if it's provided
+      ...(req.query.action_type && { action_type: req.query.action_type }),
+    };
+
+    const limit = parseInt(req.query.limit) || 10;
+    const page = parseInt(req.query.page) || 1;
+
+    const logs = await LoggingService.getClientLogs({
+      filters,
+      limit,
+      page,
+    });
+
     res.status(200).json({
       status: "success",
-      message: "Feature will be available in a future update",
-      data: {},
+      data: logs.rows,
+      total: logs.count,
+      page,
     });
   } catch (error) {
-    next(error);
+    console.error("Client logs error:", error);
+    next(error.statusCode ? error : new AppError(error.message, 500));
   }
 };
