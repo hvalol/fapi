@@ -152,7 +152,6 @@ class ClientDashboardService {
       const zenithGames = await models.ZenithGame.findAll({
         where: {
           is_active: true,
-          is_disabled: false,
         },
         include: [
           {
@@ -172,7 +171,6 @@ class ClientDashboardService {
       const zenithVendors = await models.ZenithVendor.findAll({
         where: {
           is_active: true,
-          is_disabled: false,
         },
         include: [
           {
@@ -180,7 +178,6 @@ class ClientDashboardService {
             as: "games",
             where: {
               is_active: true,
-              is_disabled: false,
             },
             required: false,
           },
@@ -190,12 +187,14 @@ class ClientDashboardService {
       // Format games data for frontend
       const games = zenithGames.map((game) => {
         const gameData = game.toJSON();
+
         return {
           id: gameData.id,
           name: gameData.gameName,
           vendor: gameData.vendor ? gameData.vendor.name : "Unknown",
           category: gameData.categoryCode || "Uncategorized",
           popular: false, // Could be enhanced with real data in the future
+          status: gameData.is_disabled ? "inactive" : "active",
         };
       });
 
