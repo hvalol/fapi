@@ -553,12 +553,8 @@ class ZenithController {
 
   async syncGamesApi(req, res, next) {
     try {
-      const apiSecret =
-        process.env.apiSecret ||
-        "2981bb3859732a61cc18c3da21b0b380a8ed88ed02607fd1fff4405e217677c3";
-      const apiKey =
-        process.env.apiKey ||
-        "b4b517b8ae043835f67f8a0fc6c251a10d983345a3539b3fb736c80399a9502e";
+      const apiSecret = process.env.apiSecret;
+      const apiKey = process.env.apiKey;
 
       // 1. Get all vendors
       console.log("[syncGamesApi] Fetching all vendors...");
@@ -667,12 +663,8 @@ class ZenithController {
    */
   async syncVendorsApi(req, res, next) {
     try {
-      const apiSecret =
-        process.env.apiSecret ||
-        "2981bb3859732a61cc18c3da21b0b380a8ed88ed02607fd1fff4405e217677c3";
-      const apiKey =
-        process.env.apiKey ||
-        "b4b517b8ae043835f67f8a0fc6c251a10d983345a3539b3fb736c80399a9502e";
+      const apiSecret = process.env.apiSecret;
+      const apiKey = process.env.apiKey;
 
       const traceId = uuidv4();
       const data = { traceId };
