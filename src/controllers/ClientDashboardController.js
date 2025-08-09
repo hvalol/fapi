@@ -1,5 +1,5 @@
 const { AppError } = require("../middlewares/errorHandler");
-const clientDashboardService = require("../services/clientDashboardService");
+const clientDashboardService = require("../services/ClientDashboardService");
 const { Op } = require("sequelize");
 const { LoggingService } = require("../services");
 /**
