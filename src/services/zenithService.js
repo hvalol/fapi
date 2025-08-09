@@ -596,6 +596,35 @@ class ZenithService {
       throw new AppError("Failed to upsert games", 500);
     }
   }
+
+  /**
+   * Bulk upsert vendors into ZenithVendor model.
+   * @param {Array<Object>} vendors - Array of vendor objects to upsert
+   * @returns {Promise<void>}
+   */
+  async upsertVendors(vendors) {
+    if (!Array.isArray(vendors) || vendors.length === 0) return;
+
+    const updateFields = ["name", "categoryCode", "currencyCode", "is_active"];
+
+    const BATCH_SIZE = 500;
+    try {
+      for (let i = 0; i < vendors.length; i += BATCH_SIZE) {
+        const batch = vendors.slice(i, i + BATCH_SIZE);
+        await ZenithVendor.bulkCreate(batch, {
+          updateOnDuplicate: updateFields,
+        });
+        console.log(
+          `Upserted vendor batch ${i / BATCH_SIZE + 1} (${
+            batch.length
+          } vendors)`
+        );
+      }
+    } catch (error) {
+      console.error("Error upserting vendors:", error);
+      throw new AppError("Failed to upsert vendors", 500);
+    }
+  }
 }
 
 module.exports = new ZenithService();

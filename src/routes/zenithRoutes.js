@@ -13,7 +13,7 @@ router.use(authenticate);
 
 // ------- SYNC VENDORS AND GAMES ------- //
 // SYNC vendor
-// router.get("/syncVendors", zenithController.getAllVendors);
+router.get("/syncVendors", zenithController.syncVendorsApi);
 
 // Sync Games
 router.get("/syncGames", zenithController.syncGamesApi);

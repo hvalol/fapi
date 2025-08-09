@@ -658,6 +658,77 @@ class ZenithController {
       next(error);
     }
   }
+
+  /**
+   * Sync vendors from external Zenith API and upsert into local database
+   * @param {Object} req - Express request object
+   * @param {Object} res - Express response object
+   * @param {Function} next - Express next middleware function
+   */
+  async syncVendorsApi(req, res, next) {
+    try {
+      const apiSecret =
+        process.env.apiSecret ||
+        "2981bb3859732a61cc18c3da21b0b380a8ed88ed02607fd1fff4405e217677c3";
+      const apiKey =
+        process.env.apiKey ||
+        "b4b517b8ae043835f67f8a0fc6c251a10d983345a3539b3fb736c80399a9502e";
+
+      const traceId = uuidv4();
+      const data = { traceId };
+      const jsonBody = JSON.stringify(data);
+
+      // Generate signature
+      const signature = crypto
+        .createHmac("sha256", apiSecret)
+        .update(jsonBody)
+        .digest("hex");
+
+      // Call Zenith vendor API
+      const response = await axios.post(
+        "https://stg.gasea168.com/vendor/list",
+        data,
+        {
+          headers: {
+            "Content-Type": "application/json",
+            "x-signature": signature,
+            "x-api-key": apiKey,
+            traceId,
+          },
+        }
+      );
+
+      const respData = response.data.data;
+      if (!Array.isArray(respData)) {
+        return res.status(500).json({
+          status: "error",
+          message: "Invalid vendor data received from Zenith API",
+        });
+      }
+
+      // Map and upsert vendors
+      const vendorsToUpsert = respData.map((vendor) => ({
+        name: vendor.name,
+        code: vendor.code,
+        categoryCode: vendor.categoryCode,
+        currencyCode: vendor.currencyCode,
+        is_active: true, // default to active
+      }));
+
+      if (vendorsToUpsert.length > 0) {
+        await zenithService.upsertVendors(vendorsToUpsert);
+      }
+
+      res.json({
+        status: "success",
+        count: vendorsToUpsert.length,
+        message: "Vendors synced successfully",
+      });
+    } catch (error) {
+      console.error("[syncVendorsApi] Error:", error);
+      next(error);
+    }
+  }
 }
 
 module.exports = new ZenithController();
