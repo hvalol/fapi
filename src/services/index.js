@@ -5,7 +5,7 @@ const clientService = require("./clientService");
 const agentService = require("./agentService");
 const clientBillingService = require("./clientBillingService");
 const zenithService = require("./zenithService");
-const clientDashboardService = require("./clientDashboardService");
+const clientDashboardService = require("./ClientDashboardService");
 const LoggingService = require("./loggingService");
 
 module.exports = {
