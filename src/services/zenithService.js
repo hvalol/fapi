@@ -1,5 +1,6 @@
 const { ZenithVendor, ZenithGame } = require("../models");
 const { AppError } = require("../middlewares/errorHandler");
+const { Op } = require("sequelize");
 
 /**
  * ZenithService
@@ -16,10 +17,39 @@ class ZenithService {
    * Get all vendors with formatted category and currency codes
    * @returns {Array} Array of vendor objects
    */
-  async getAllVendors() {
+  async getAllVendors(filters = {}, page = 1, limit = 20) {
     try {
-      const vendors = await ZenithVendor.findAll();
-      return this.formatVendorData(vendors);
+      const offset = (page - 1) * limit;
+      const where = {};
+
+      // Search by name or code
+      if (filters.search) {
+        where[Op.or] = [
+          { name: { [Op.like]: `%${filters.search}%` } },
+          { code: { [Op.like]: `%${filters.search}%` } },
+        ];
+      }
+
+      // Filter by type/category
+      if (filters.type && filters.type !== "All Types") {
+        where.categoryCode = { [Op.like]: `%${filters.type}%` };
+      }
+
+      // Filter by status (enabled/disabled)
+      if (filters.status === "Enabled") {
+        where.is_disabled = false;
+      } else if (filters.status === "Disabled") {
+        where.is_disabled = true;
+      }
+
+      const { rows, count } = await ZenithVendor.findAndCountAll({
+        where,
+        offset,
+        limit,
+        order: [["id", "ASC"]],
+      });
+      const vendors = this.formatVendorData(rows);
+      return { vendors, total: count };
     } catch (error) {
       console.error("Error fetching vendors:", error);
       throw new AppError("Failed to fetch vendors", 500);
@@ -223,42 +253,49 @@ class ZenithService {
    * @param {Object} filters - Optional filters for the query
    * @returns {Array} Array of game objects
    */
-  async getAllGames(filters = {}) {
+  async getAllGames(filters = {}, page = 1, limit = 20) {
     try {
-      // Build query options
-      const queryOptions = {
-        include: [
-          {
-            model: ZenithVendor,
-            as: "vendor",
-            attributes: ["id", "name", "code"],
-          },
-        ],
-      };
+      const offset = (page - 1) * limit;
+      const where = {};
 
-      // Add filters if provided
-      if (Object.keys(filters).length > 0) {
-        queryOptions.where = {};
-
-        if (filters.categoryCode) {
-          queryOptions.where.categoryCode = filters.categoryCode;
-        }
-
-        if (filters.vendorId) {
-          queryOptions.where.vendorId = filters.vendorId;
-        }
-
-        if (filters.isActive !== undefined) {
-          queryOptions.where.is_active = filters.isActive;
-        }
-
-        if (filters.isDisabled !== undefined) {
-          queryOptions.where.is_disabled = filters.isDisabled;
+      // Search by name, gameCode, or id
+      if (filters.search) {
+        where[Op.or] = [
+          { gameName: { [Op.like]: `%${filters.search}%` } },
+          { gameCode: { [Op.like]: `%${filters.search}%` } },
+        ];
+        // If search is a number, allow searching by id
+        if (!isNaN(Number(filters.search))) {
+          where[Op.or].push({ id: Number(filters.search) });
         }
       }
 
-      const games = await ZenithGame.findAll(queryOptions);
-      return this.formatGameData(games);
+      // Filter by category/type
+      if (filters.categoryCode && filters.categoryCode !== "All Types") {
+        where.categoryCode = filters.categoryCode;
+      }
+
+      // Filter by provider
+      if (filters.provider && filters.provider !== "All Providers") {
+        where.provider = filters.provider;
+      }
+
+      // Filter by status (enabled/disabled)
+      if (filters.status === "Enabled") {
+        where.is_disabled = false;
+      } else if (filters.status === "Disabled") {
+        where.is_disabled = true;
+      }
+
+      const { rows, count } = await ZenithGame.findAndCountAll({
+        where,
+        offset,
+        limit,
+        order: [["id", "ASC"]],
+      });
+      const games = this.formatGameData(rows);
+
+      return { games, total: count };
     } catch (error) {
       console.error("Error fetching games:", error);
       throw new AppError("Failed to fetch games", 500);
@@ -521,6 +558,43 @@ class ZenithService {
 
       return gameData;
     });
+  }
+
+  /**
+   * Bulk upsert games into ZenithGame model.
+   * @param {Array<Object>} games - Array of game objects to upsert
+   * @returns {Promise<void>}
+   */
+  async upsertGame(games) {
+    if (!Array.isArray(games) || games.length === 0) return;
+
+    const updateFields = [
+      "gameName",
+      "categoryCode",
+      "imageSquare",
+      "imageLandscape",
+      "languageCode",
+      "platformCode",
+      "currencyCode",
+      "is_active",
+      "is_disabled",
+    ];
+
+    const BATCH_SIZE = 500; // adjust as needed
+    try {
+      for (let i = 0; i < games.length; i += BATCH_SIZE) {
+        const batch = games.slice(i, i + BATCH_SIZE);
+        await ZenithGame.bulkCreate(batch, {
+          updateOnDuplicate: updateFields,
+        });
+        console.log(
+          `Upserted batch ${i / BATCH_SIZE + 1} (${batch.length} games)`
+        );
+      }
+    } catch (error) {
+      console.error("Error upserting games:", error);
+      throw new AppError("Failed to upsert games", 500);
+    }
   }
 }
 

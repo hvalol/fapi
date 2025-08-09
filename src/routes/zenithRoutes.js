@@ -11,6 +11,13 @@ const router = express.Router();
 // All zenith routes require authentication
 router.use(authenticate);
 
+// ------- SYNC VENDORS AND GAMES ------- //
+// SYNC vendor
+// router.get("/syncVendors", zenithController.getAllVendors);
+
+// Sync Games
+router.get("/syncGames", zenithController.syncGamesApi);
+
 /*
  *
  * ZENITH VENDOR

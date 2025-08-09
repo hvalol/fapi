@@ -16,16 +16,11 @@ router.use(authenticate);
 router.get(
   "/",
   authorize("Admin"),
-  loggingMiddleware(),
   clientBillingController.getAllClientBilling
 );
 
 // Get client billing by ID (Admin or client's own admin)
-router.get(
-  "/:id",
-  loggingMiddleware(),
-  clientBillingController.getClientBillingById
-);
+router.get("/:id", clientBillingController.getClientBillingById);
 
 // Add charge to client (Admin only)
 router.post(

@@ -1,5 +1,8 @@
 const zenithService = require("../services/zenithService");
 const { AppError } = require("../middlewares/errorHandler");
+const axios = require("axios");
+const crypto = require("crypto");
+const { v4: uuidv4 } = require("uuid");
 
 /**
  * ZenithController
@@ -14,12 +17,26 @@ class ZenithController {
    */
   async getAllVendors(req, res, next) {
     try {
-      const vendors = await zenithService.getAllVendors();
+      const filters = {
+        search: req.query.search,
+        type: req.query.type,
+        status: req.query.status,
+      };
+      const page = parseInt(req.query.page) || 1;
+      const limit = parseInt(req.query.limit) || 20;
+      const { vendors, total } = await zenithService.getAllVendors(
+        filters,
+        page,
+        limit
+      );
 
       res.json({
         status: "success",
         data: {
           vendors,
+          total,
+          page,
+          limit,
           count: vendors.length,
         },
       });
@@ -264,35 +281,29 @@ class ZenithController {
    */
   async getAllGames(req, res, next) {
     try {
-      // Extract filter parameters from query string
-      const filters = {};
+      const filters = {
+        search: req.query.search,
+        categoryCode: req.query.categoryCode,
+        provider: req.query.provider,
+        status: req.query.status,
+      };
 
-      if (req.query.categoryCode) {
-        filters.categoryCode = req.query.categoryCode;
-      }
+      const page = parseInt(req.query.page) || 1;
+      const limit = parseInt(req.query.limit) || 20;
 
-      if (req.query.vendorId) {
-        const vendorId = parseInt(req.query.vendorId);
-        if (!isNaN(vendorId)) {
-          filters.vendorId = vendorId;
-        }
-      }
-
-      if (req.query.isActive !== undefined) {
-        filters.isActive = req.query.isActive === "true";
-      }
-
-      if (req.query.isDisabled !== undefined) {
-        filters.isDisabled = req.query.isDisabled === "true";
-      }
-
-      const games = await zenithService.getAllGames(filters);
+      const { games, total } = await zenithService.getAllGames(
+        filters,
+        page,
+        limit
+      );
 
       res.json({
         status: "success",
         data: {
           games,
-          count: games.length,
+          total,
+          page,
+          limit,
         },
       });
     } catch (error) {
@@ -536,6 +547,114 @@ class ZenithController {
         },
       });
     } catch (error) {
+      next(error);
+    }
+  }
+
+  async syncGamesApi(req, res, next) {
+    try {
+      const apiSecret =
+        process.env.apiSecret ||
+        "2981bb3859732a61cc18c3da21b0b380a8ed88ed02607fd1fff4405e217677c3";
+      const apiKey =
+        process.env.apiKey ||
+        "b4b517b8ae043835f67f8a0fc6c251a10d983345a3539b3fb736c80399a9502e";
+
+      // 1. Get all vendors
+      console.log("[syncGamesApi] Fetching all vendors...");
+      const vendors = await zenithService.getAllVendors();
+      console.log(`[syncGamesApi] Found ${vendors.length} vendors.`);
+
+      let allGames = [];
+
+      // 2. For each vendor
+      for (const vendor of vendors) {
+        let pageNo = 1;
+        let totalPages = 1;
+        console.log(
+          `[syncGamesApi] Syncing games for vendor: ${vendor.code} (ID: ${vendor.id})`
+        );
+
+        do {
+          const traceId = uuidv4();
+          const data = {
+            traceId,
+            vendorCode: vendor.code,
+            pageNo,
+          };
+          const jsonBody = JSON.stringify(data);
+
+          // Generate signature
+          const signature = crypto
+            .createHmac("sha256", apiSecret)
+            .update(jsonBody)
+            .digest("hex");
+
+          console.log(
+            `[syncGamesApi] Requesting page ${pageNo} for vendor ${vendor.code}...`
+          );
+          // Call Zenith API
+          const response = await axios.post(
+            "https://stg.gasea168.com/game/list",
+            data,
+            {
+              headers: {
+                "Content-Type": "application/json",
+                "x-signature": signature,
+                "x-api-key": apiKey,
+                traceId,
+              },
+            }
+          );
+
+          const respData = response.data.data;
+          if (!respData || !respData.games) {
+            console.log(
+              `[syncGamesApi] No games found for vendor ${vendor.code} on page ${pageNo}.`
+            );
+            break;
+          }
+
+          // 3. Map games using headers
+          const headers = respData.headers;
+          let gamesThisPage = 0;
+          for (const gameArr of respData.games) {
+            const gameObj = {};
+            for (const [key, idx] of Object.entries(headers)) {
+              gameObj[key] = gameArr[idx];
+            }
+            gameObj.vendorId = vendor.id;
+            allGames.push(gameObj);
+            gamesThisPage++;
+          }
+          console.log(
+            `[syncGamesApi] Fetched ${gamesThisPage} games for vendor ${vendor.code} on page ${pageNo}.`
+          );
+
+          // 4. Upsert into zenithGames model (bulk after all pages)
+          pageNo++;
+          totalPages = respData.totalPages;
+        } while (pageNo <= totalPages);
+      }
+
+      // Bulk upsert after all vendors/pages
+      if (allGames.length > 0) {
+        console.log(
+          `[syncGamesApi] Upserting ${allGames.length} games into database...`
+        );
+        await zenithService.upsertGame(allGames);
+        console.log("[syncGamesApi] Upsert complete.");
+      } else {
+        console.log("[syncGamesApi] No games to upsert.");
+      }
+
+      res.json({
+        status: "success",
+        count: allGames.length,
+        message: "Games synced successfully",
+      });
+    } catch (error) {
+      console.error("[syncGamesApi] Error:", error);
       next(error);
     }
   }

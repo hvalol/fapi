@@ -12,7 +12,7 @@ AdminLogsArchive.init(
     },
     user_id: {
       type: DataTypes.INTEGER,
-      allowNull: true,
+      allowNull: false,
       validate: {
         isInt: true,
       },

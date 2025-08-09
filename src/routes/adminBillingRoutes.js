@@ -13,18 +13,10 @@ router.use(authenticate);
 router.use(authorize("Admin"));
 
 // Get all clients billing summary
-router.get(
-  "/",
-  loggingMiddleware(),
-  adminBillingController.getAllClientsBillingSummary
-);
+router.get("/", adminBillingController.getAllClientsBillingSummary);
 
 // Get detailed billing for a specific client
-router.get(
-  "/:id",
-  loggingMiddleware(),
-  adminBillingController.getClientBillingDetails
-);
+router.get("/:id", adminBillingController.getClientBillingDetails);
 
 // Add charge to client
 router.post(
