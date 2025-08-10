@@ -14,7 +14,7 @@ ClientLogsArchive.init(
       type: DataTypes.INTEGER,
       allowNull: false,
       references: {
-        model: "Clients",
+        model: "clients",
         key: "id",
       },
     },
@@ -22,7 +22,7 @@ ClientLogsArchive.init(
       type: DataTypes.INTEGER,
       allowNull: false,
       references: {
-        model: "Users",
+        model: "users",
         key: "id",
       },
     },
