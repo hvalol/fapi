@@ -78,7 +78,10 @@ exports.createAgent = async (req, res, next) => {
         notes: req.body.profile?.notes,
         timezone: req.body.profile?.timezone,
       },
-      settings: req.body.settings,
+      settings: {
+        ...req.body.settings,
+        allowed_providers: req.body.allowed_providers, // should be array
+      },
       commissions: req.body.commissions,
       user_id: req.body.user_id,
       max_agents: req.body.max_agents,
@@ -133,7 +136,10 @@ exports.updateAgent = async (req, res, next) => {
         notes: req.body.profile?.notes,
         timezone: req.body.profile?.timezone,
       },
-      settings: req.body.settings,
+      settings: {
+        ...req.body.settings,
+        allowed_providers: req.body.allowed_providers, // should be array
+      },
       user_id: req.body.user_id,
       max_agents: req.body.max_agents,
       max_level: req.body.max_level,

@@ -45,7 +45,21 @@ const AgentSettings = sequelize.define(
     allowed_providers: {
       type: DataTypes.TEXT,
       allowNull: true,
-      comment: "JSON array of allowed provider IDs",
+      comment: "JSON array of allowed provider codes",
+      get() {
+        const raw = this.getDataValue("allowed_providers");
+        try {
+          return raw ? JSON.parse(raw) : [];
+        } catch {
+          return [];
+        }
+      },
+      set(val) {
+        this.setDataValue(
+          "allowed_providers",
+          Array.isArray(val) ? JSON.stringify(val) : "[]"
+        );
+      },
     },
     max_bet: {
       type: DataTypes.JSON, // changed from DECIMAL

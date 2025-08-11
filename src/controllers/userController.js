@@ -47,6 +47,7 @@ exports.createUser = async (req, res, next) => {
       role: req.body.role,
       status: req.body.status,
       client_id: req.body.client_id,
+      agent_id: req.body.agent_id,
     };
 
     const user = await userService.createUser(userData);

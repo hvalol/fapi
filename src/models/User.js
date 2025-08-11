@@ -34,6 +34,10 @@ const User = sequelize.define(
       type: DataTypes.INTEGER,
       allowNull: true,
     },
+    agent_id: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
     last_login: {
       type: DataTypes.DATE,
       allowNull: true,

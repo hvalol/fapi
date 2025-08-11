@@ -553,12 +553,12 @@ class ZenithController {
 
   async syncGamesApi(req, res, next) {
     try {
-      const apiSecret = process.env.apiSecret;
-      const apiKey = process.env.apiKey;
+      const apiSecret = process.env.API_SECRET;
+      const apiKey = process.env.API_KEY;
 
       // 1. Get all vendors
       console.log("[syncGamesApi] Fetching all vendors...");
-      const vendors = await zenithService.getAllVendors();
+      const { vendors } = await zenithService.getAllVendors();
       console.log(`[syncGamesApi] Found ${vendors.length} vendors.`);
 
       let allGames = [];

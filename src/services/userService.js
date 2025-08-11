@@ -1,6 +1,7 @@
 const { User, Client } = require("../models");
 const { AppError } = require("../middlewares/errorHandler");
 const { hashPassword, verifyPassword } = require("../utils/authUtils");
+const { Op } = require("sequelize");
 
 /**
  * Service for user management operations
@@ -15,7 +16,29 @@ class UserService {
     const query = {};
 
     // Apply filters if provided
-    if (filters.role) query.role = filters.role;
+    if (filters.role) {
+      let roles = [];
+      if (Array.isArray(filters.role)) {
+        roles = filters.role;
+      } else if (
+        typeof filters.role === "string" &&
+        filters.role.includes(",")
+      ) {
+        roles = filters.role.split(",").map((r) => r.trim());
+      } else {
+        roles = [filters.role];
+      }
+      // Always exclude Admin
+      roles = roles.filter((r) => r !== "Admin");
+      if (roles.length > 0) {
+        query.role = { [Op.in]: roles };
+      } else {
+        query.role = { [Op.not]: "Admin" };
+      }
+    } else {
+      // If no role filter, exclude Admin by default
+      query.role = { [Op.not]: "Admin" };
+    }
     if (filters.status) query.status = filters.status;
     if (filters.client_id) query.client_id = filters.client_id;
 
@@ -62,7 +85,7 @@ class UserService {
    * @returns {Object} Created user
    */
   async createUser(userData) {
-    const { username, password, role, status, client_id } = userData;
+    const { username, password, role, status, client_id, agent_id } = userData;
 
     // Check if username already exists
     const existingUser = await User.findOne({ where: { username } });
@@ -86,6 +109,7 @@ class UserService {
       role: role || "ClientAdmin",
       status: status || "active",
       client_id,
+      agent_id,
     });
 
     // Return user without password

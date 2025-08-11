@@ -368,7 +368,8 @@ class AgentService {
                 ? settings.transfer_wallet
                 : true,
             allowed_games: settings.allowed_games,
-            allowed_providers: settings.allowed_providers,
+            allowed_providers: settings.allowed_providers || [],
+
             max_bet:
               typeof settings.max_bet === "string"
                 ? JSON.parse(settings.max_bet)
