@@ -368,8 +368,7 @@ class AgentService {
                 ? settings.transfer_wallet
                 : true,
             allowed_games: settings.allowed_games,
-            allowed_providers: settings.allowed_providers || [],
-
+            allowed_providers: settings.allowed_providers,
             max_bet:
               typeof settings.max_bet === "string"
                 ? JSON.parse(settings.max_bet)
@@ -814,48 +813,61 @@ class AgentService {
     };
   }
   /**
-   * Set bet limits for a specific provider for an agent
+   * Set bet limits for a specific provider/game for an agent
    * @param {number} agentId
    * @param {number} providerId
    * @param {number} minBet
    * @param {number} maxBet
+   * @param {number} [gameId] - Optional, for per-game limit
    */
-  async setProviderBetLimit(agentId, providerId, minBet, maxBet) {
+  async setProviderBetLimit(agentId, providerId, minBet, maxBet, gameId) {
     const AgentSettings = require("../models/AgentSettings");
     const settings = await AgentSettings.findOne({
       where: { agent_id: agentId },
     });
     if (!settings) throw new AppError("Agent settings not found", 404);
 
-    // Ensure min_bet and max_bet are objects, not strings
-    let minObj;
-    let maxObj;
-    try {
-      minObj =
-        typeof settings.min_bet === "string"
-          ? JSON.parse(settings.min_bet)
-          : settings.min_bet
-          ? { ...settings.min_bet }
-          : {};
-    } catch (e) {
-      minObj = {};
-    }
-    try {
-      maxObj =
-        typeof settings.max_bet === "string"
-          ? JSON.parse(settings.max_bet)
-          : settings.max_bet
-          ? { ...settings.max_bet }
-          : {};
-    } catch (e) {
-      maxObj = {};
+    // Parse all objects safely (handle string or object)
+    let min_bet = settings.min_bet || {};
+    let max_bet = settings.max_bet || {};
+    let min_bet_games = settings.min_bet_games || {};
+    let max_bet_games = settings.max_bet_games || {};
+
+    if (typeof min_bet === "string") min_bet = JSON.parse(min_bet);
+    if (typeof max_bet === "string") max_bet = JSON.parse(max_bet);
+    if (typeof min_bet_games === "string")
+      min_bet_games = JSON.parse(min_bet_games);
+    if (typeof max_bet_games === "string")
+      max_bet_games = JSON.parse(max_bet_games);
+
+    // Defensive: ensure providerId and gameId are strings for object keys
+    const providerKey = String(providerId);
+    const gameKey =
+      typeof gameId === "number" && !isNaN(gameId) ? String(gameId) : null;
+
+    if (gameKey) {
+      // --- GAME-LEVEL LIMITS ---
+      // Clone to ensure new object reference for Sequelize change detection
+      const newMinBetGames = { ...min_bet_games };
+      const newMaxBetGames = { ...max_bet_games };
+      newMinBetGames[providerKey] = { ...(min_bet_games[providerKey] || {}) };
+      newMaxBetGames[providerKey] = { ...(max_bet_games[providerKey] || {}) };
+
+      if (minBet !== undefined) newMinBetGames[providerKey][gameKey] = minBet;
+      if (maxBet !== undefined) newMaxBetGames[providerKey][gameKey] = maxBet;
+
+      settings.setDataValue("min_bet_games", newMinBetGames);
+      settings.setDataValue("max_bet_games", newMaxBetGames);
+    } else {
+      // --- PROVIDER-LEVEL LIMITS ---
+      const newMinBet = { ...min_bet };
+      const newMaxBet = { ...max_bet };
+      if (minBet !== undefined) newMinBet[providerKey] = minBet;
+      if (maxBet !== undefined) newMaxBet[providerKey] = maxBet;
+      settings.setDataValue("min_bet", newMinBet);
+      settings.setDataValue("max_bet", newMaxBet);
     }
 
-    if (minBet !== undefined) minObj[providerId] = minBet;
-    if (maxBet !== undefined) maxObj[providerId] = maxBet;
-
-    settings.min_bet = minObj;
-    settings.max_bet = maxObj;
     await settings.save();
 
     return settings;

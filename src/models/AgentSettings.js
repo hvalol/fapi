@@ -71,6 +71,16 @@ const AgentSettings = sequelize.define(
       allowNull: true,
       comment: "Object: { [providerId]: value }",
     },
+    min_bet_games: {
+      type: DataTypes.JSON,
+      allowNull: true,
+      comment: "Object: { [providerId]: { [gameId]: value } }",
+    },
+    max_bet_games: {
+      type: DataTypes.JSON,
+      allowNull: true,
+      comment: "Object: { [providerId]: { [gameId]: value } }",
+    },
   },
   {
     timestamps: true,

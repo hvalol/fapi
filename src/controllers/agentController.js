@@ -295,6 +295,7 @@ exports.setProviderBetLimit = async (req, res, next) => {
     const providerId = req.body.providerId;
     const minBet = req.body.minBet;
     const maxBet = req.body.maxBet;
+    const gameId = req.body.gameId;
 
     if (!providerId) throw new AppError("Provider ID required", 400);
 
@@ -302,7 +303,8 @@ exports.setProviderBetLimit = async (req, res, next) => {
       agentId,
       providerId,
       minBet,
-      maxBet
+      maxBet,
+      gameId
     );
 
     res.status(200).json({
@@ -310,6 +312,8 @@ exports.setProviderBetLimit = async (req, res, next) => {
       data: {
         min_bet: settings.min_bet,
         max_bet: settings.max_bet,
+        min_bet_games: settings.min_bet_games,
+        max_bet_games: settings.max_bet_games,
       },
     });
   } catch (error) {

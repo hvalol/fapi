@@ -258,6 +258,11 @@ class ZenithService {
       const offset = (page - 1) * limit;
       const where = {};
 
+      // Filter by vendor_id (provider)
+      if (filters.provider) {
+        where.vendor_id = filters.provider;
+      }
+
       // Search by name, gameCode, or id
       if (filters.search) {
         where[Op.or] = [
@@ -273,11 +278,6 @@ class ZenithService {
       // Filter by category/type
       if (filters.categoryCode && filters.categoryCode !== "All Types") {
         where.categoryCode = filters.categoryCode;
-      }
-
-      // Filter by provider
-      if (filters.provider && filters.provider !== "All Providers") {
-        where.provider = filters.provider;
       }
 
       // Filter by status (enabled/disabled)
