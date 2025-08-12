@@ -1,4 +1,4 @@
-const { ZenithVendor, ZenithGame } = require("../models");
+const { ZenithVendor, ZenithGame, AgentSettings } = require("../models");
 const { AppError } = require("../middlewares/errorHandler");
 const { Op } = require("sequelize");
 
@@ -14,10 +14,16 @@ class ZenithService {
    */
 
   /**
-   * Get all vendors with formatted category and currency codes
-   * @returns {Array} Array of vendor objects
+   * Get all vendors with formatted category and currency codes,
+   * filtered by agent's allowed_providers if agentId is provided.
+   * @param {Object} filters - Filters for the query
+   * @param {number} page - Page number for pagination
+   * @param {number} limit - Number of items per page
+   * @param {number} [agentId] - Optional agent ID to filter by allowed_providers
+   * @returns {Object} { vendors: Array, total: number }
+   * @throws {AppError} If agent or agent settings not found, or on DB error
    */
-  async getAllVendors(filters = {}, page = 1, limit = 20) {
+  async getAllVendors(filters = {}, page = 1, limit = 20, agentId = null) {
     try {
       const offset = (page - 1) * limit;
       const where = {};
@@ -42,6 +48,29 @@ class ZenithService {
         where.is_disabled = true;
       }
 
+      // --- Filter by agent's allowed_providers if agentId is provided ---
+      let allowedProviders = null;
+      if (agentId) {
+        // Fetch agent and settings
+        const agent = await Agent.findByPk(agentId, {
+          include: [{ model: AgentSettings, as: "settings" }],
+        });
+        if (!agent) {
+          throw new AppError("Agent not found", 404);
+        }
+        if (!agent.settings) {
+          throw new AppError("Agent settings not found", 404);
+        }
+        // allowed_providers is an array (getter in model)
+        allowedProviders = agent.settings.allowed_providers;
+        if (!Array.isArray(allowedProviders) || allowedProviders.length === 0) {
+          // No allowed providers, return empty result
+          return { vendors: [], total: 0 };
+        }
+        // Only include vendors whose code is in allowedProviders
+        where.code = { [Op.in]: allowedProviders };
+      }
+
       const { rows, count } = await ZenithVendor.findAndCountAll({
         where,
         offset,
@@ -51,6 +80,7 @@ class ZenithService {
       const vendors = this.formatVendorData(rows);
       return { vendors, total: count };
     } catch (error) {
+      if (error instanceof AppError) throw error;
       console.error("Error fetching vendors:", error);
       throw new AppError("Failed to fetch vendors", 500);
     }

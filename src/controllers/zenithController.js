@@ -10,7 +10,7 @@ const { v4: uuidv4 } = require("uuid");
  */
 class ZenithController {
   /**
-   * Get all vendors
+   * Get all vendors, filtered by agent's allowed_providers if agentId is provided
    * @param {Object} req - Express request object
    * @param {Object} res - Express response object
    * @param {Function} next - Express next middleware function
@@ -24,10 +24,31 @@ class ZenithController {
       };
       const page = parseInt(req.query.page) || 1;
       const limit = parseInt(req.query.limit) || 20;
+
+      // --- Support agentId from query or user context ---
+      let agentId = null;
+      // If agentId is provided in query, use it (admin only)
+      if (req.query.agentId) {
+        agentId = parseInt(req.query.agentId);
+        if (isNaN(agentId)) {
+          return next(new AppError("Invalid agent ID", 400));
+        }
+      }
+      // If user is Agent or ClientAdmin, use their agent_id if available
+      if (
+        !agentId &&
+        req.user &&
+        (req.user.role === "Agent" || req.user.role === "ClientAdmin") &&
+        req.user.agent_id
+      ) {
+        agentId = req.user.agent_id;
+      }
+
       const { vendors, total } = await zenithService.getAllVendors(
         filters,
         page,
-        limit
+        limit,
+        agentId
       );
 
       res.json({
