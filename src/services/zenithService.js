@@ -1,4 +1,4 @@
-const { ZenithVendor, ZenithGame, AgentSettings } = require("../models");
+const { ZenithVendor, ZenithGame, AgentSettings, Agent } = require("../models");
 const { AppError } = require("../middlewares/errorHandler");
 const { Op } = require("sequelize");
 
