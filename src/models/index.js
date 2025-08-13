@@ -16,6 +16,8 @@ const AdminLogs = require("./AdminLogs");
 const ClientLogs = require("./ClientLogs");
 const AdminLogsArchive = require("./AdminLogsArchive");
 const ClientLogsArchive = require("./ClientLogsArchive");
+const AgentVendorSetting = require("./AgentVendorSetting");
+const AgentGameSetting = require("./AgentGameSetting");
 
 // Client-User Association
 Client.hasMany(User, { foreignKey: "client_id", as: "users" });
@@ -111,6 +113,29 @@ ClientLogsArchive.belongsTo(User, { foreignKey: "user_id", as: "user" });
 // Vendor-Game
 ZenithVendor.hasMany(ZenithGame, { foreignKey: "vendor_id", as: "games" });
 ZenithGame.belongsTo(ZenithVendor, { foreignKey: "vendor_id", as: "vendor" });
+
+Agent.hasMany(AgentVendorSetting, {
+  foreignKey: "agent_id",
+  as: "vendorSettings",
+});
+AgentVendorSetting.belongsTo(Agent, { foreignKey: "agent_id" });
+ZenithVendor.hasMany(AgentVendorSetting, {
+  foreignKey: "vendor_id",
+  as: "agentSettings",
+});
+AgentVendorSetting.belongsTo(ZenithVendor, {
+  foreignKey: "vendor_id",
+  as: "vendor",
+});
+
+Agent.hasMany(AgentGameSetting, { foreignKey: "agent_id", as: "gameSettings" });
+AgentGameSetting.belongsTo(Agent, { foreignKey: "agent_id" });
+ZenithGame.hasMany(AgentGameSetting, {
+  foreignKey: "game_id",
+  as: "agentSettings",
+});
+AgentGameSetting.belongsTo(ZenithGame, { foreignKey: "game_id", as: "game" });
+
 module.exports = {
   sequelize,
   User,
@@ -129,4 +154,6 @@ module.exports = {
   ClientLogs,
   AdminLogsArchive,
   ClientLogsArchive,
+  AgentVendorSetting,
+  AgentGameSetting,
 };

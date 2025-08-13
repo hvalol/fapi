@@ -10,7 +10,8 @@ const { v4: uuidv4 } = require("uuid");
  */
 class ZenithController {
   /**
-   * Get all vendors, filtered by agent's allowed_providers if agentId is provided
+   * Get all vendors, filtered by agent's allowed_providers if agentId is provided.
+   * For admin: can get all agent settings. For agent/clientadmin: only own settings.
    * @param {Object} req - Express request object
    * @param {Object} res - Express response object
    * @param {Function} next - Express next middleware function
@@ -25,30 +26,31 @@ class ZenithController {
       const page = parseInt(req.query.page) || 1;
       const limit = parseInt(req.query.limit) || 20;
 
-      // --- Support agentId from query or user context ---
       let agentId = null;
-      // If agentId is provided in query, use it (admin only)
-      if (req.query.agentId) {
-        agentId = parseInt(req.query.agentId);
-        if (isNaN(agentId)) {
-          return next(new AppError("Invalid agent ID", 400));
+      let isAdmin = false;
+
+      // If admin, can get all settings
+      if (req.user && req.user.role === "Admin") {
+        isAdmin = true;
+        if (req.query.agentId) {
+          agentId = parseInt(req.query.agentId);
+          if (isNaN(agentId)) {
+            return next(new AppError("Invalid agent ID", 400));
+          }
         }
-      }
-      // If user is Agent or ClientAdmin, use their agent_id if available
-      if (
-        !agentId &&
-        req.user &&
-        (req.user.role === "Agent" || req.user.role === "ClientAdmin") &&
-        req.user.agent_id
-      ) {
-        agentId = req.user.agent_id;
+      } else {
+        // For Agent/ClientAdmin/SubAgent, use their own agent_id
+        if (req.user && req.query.agentId) {
+          agentId = req.query.agentId;
+        }
       }
 
       const { vendors, total } = await zenithService.getAllVendors(
         filters,
         page,
         limit,
-        agentId
+        agentId,
+        isAdmin
       );
 
       res.json({
@@ -247,45 +249,52 @@ class ZenithController {
   }
 
   /**
-   * Toggle the disabled state of a vendor
+   * Toggle the disabled state of a vendor for an agent (per-agent setting).
+   * For admin: can set for any agent. For agent/clientadmin: only own agent.
    * @param {Object} req - Express request object
    * @param {Object} res - Express response object
    * @param {Function} next - Express next middleware function
    */
   async toggleVendorDisabled(req, res, next) {
     try {
-      const id = parseInt(req.params.id);
-
-      if (isNaN(id)) {
+      const vendorId = parseInt(req.params.id);
+      if (isNaN(vendorId)) {
         return next(new AppError("Invalid vendor ID", 400));
       }
-
       if (typeof req.body.disabled !== "boolean") {
         return next(new AppError("disabled field must be a boolean", 400));
       }
 
-      // Get the vendor first to check client_id if user is ClientAdmin
-      const vendor = await zenithService.getVendorById(id);
+      let agentId = null;
+      let isAdmin = false;
 
-      // If user is ClientAdmin, check if vendor belongs to their client
-      if (req.user.role === "ClientAdmin") {
-        // TODO: Implement checking of vendor is enabled by admin for this client
+      if (req.user && req.user.role === "Admin") {
+        isAdmin = true;
+        agentId = req.body.agentId || req.query.agentId;
+        if (!agentId) {
+          return next(new AppError("agentId is required for admin", 400));
+        }
+      } else {
+        if (req.user && req.body.agentId) {
+          agentId = req.body.agentId;
+        } else {
+          return next(new AppError("You do not have permission", 403));
+        }
       }
 
-      const updatedVendor = await zenithService.toggleVendorDisabled(
-        id,
+      const updatedSetting = await zenithService.toggleAgentVendorDisabled(
+        agentId,
+        vendorId,
         req.body.disabled
       );
-
-      const message = req.body.disabled
-        ? "Vendor temporarily disabled successfully"
-        : "Vendor enabled successfully";
 
       res.json({
         status: "success",
         data: {
-          vendor: updatedVendor,
-          message,
+          agentVendorSetting: updatedSetting,
+          message: req.body.disabled
+            ? "Vendor disabled for agent"
+            : "Vendor enabled for agent",
         },
       });
     } catch (error) {
@@ -295,7 +304,8 @@ class ZenithController {
 
   //   zenith Games
   /**
-   * Get all games with optional filtering
+   * Get all games, including agent-specific disable settings.
+   * For admin: can get all agent settings. For agent/clientadmin: only own settings.
    * @param {Object} req - Express request object
    * @param {Object} res - Express response object
    * @param {Function} next - Express next middleware function
@@ -312,10 +322,29 @@ class ZenithController {
       const page = parseInt(req.query.page) || 1;
       const limit = parseInt(req.query.limit) || 20;
 
+      let agentId = null;
+      let isAdmin = false;
+
+      if (req.user && req.user.role === "Admin") {
+        isAdmin = true;
+        if (req.query.agentId) {
+          agentId = parseInt(req.query.agentId);
+          if (isNaN(agentId)) {
+            return next(new AppError("Invalid agent ID", 400));
+          }
+        }
+      } else {
+        if (req.user && req.query.agentId) {
+          agentId = req.query.agentId;
+        }
+      }
+
       const { games, total } = await zenithService.getAllGames(
         filters,
         page,
-        limit
+        limit,
+        agentId,
+        isAdmin
       );
 
       res.json({
@@ -534,37 +563,54 @@ class ZenithController {
   }
 
   /**
-   * Toggle the disabled state of a game
+   * Toggle the disabled state of a game for an agent (per-agent setting).
+   * For admin: can set for any agent. For agent/clientadmin: only own agent.
    * @param {Object} req - Express request object
    * @param {Object} res - Express response object
    * @param {Function} next - Express next middleware function
    */
   async toggleGameDisabled(req, res, next) {
     try {
-      const id = parseInt(req.params.id);
-
-      if (isNaN(id)) {
+      const gameId = parseInt(req.params.id);
+      if (isNaN(gameId)) {
         return next(new AppError("Invalid game ID", 400));
       }
-
       if (typeof req.body.disabled !== "boolean") {
         return next(new AppError("disabled field must be a boolean", 400));
       }
 
-      const game = await zenithService.toggleGameDisabled(
-        id,
+      let agentId = null;
+      let isAdmin = false;
+
+      console.log("body", req.body);
+      console.log("user", req.user);
+      if (req.user && req.user.role === "Admin") {
+        isAdmin = true;
+        agentId = req.body.agentId || req.query.agentId;
+        if (!agentId) {
+          return next(new AppError("agentId is required for admin", 400));
+        }
+      } else {
+        if (req.user && req.body.agentId) {
+          agentId = req.body.agentId;
+        } else {
+          return next(new AppError("You do not have permission", 403));
+        }
+      }
+
+      const updatedSetting = await zenithService.toggleAgentGameDisabled(
+        agentId,
+        gameId,
         req.body.disabled
       );
-
-      const message = req.body.disabled
-        ? "Game temporarily disabled successfully"
-        : "Game enabled successfully";
 
       res.json({
         status: "success",
         data: {
-          game,
-          message,
+          agentGameSetting: updatedSetting,
+          message: req.body.disabled
+            ? "Game disabled for agent"
+            : "Game enabled for agent",
         },
       });
     } catch (error) {

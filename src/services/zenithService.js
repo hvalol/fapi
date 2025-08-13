@@ -1,4 +1,11 @@
-const { ZenithVendor, ZenithGame, AgentSettings, Agent } = require("../models");
+const {
+  ZenithVendor,
+  ZenithGame,
+  AgentSettings,
+  Agent,
+  AgentVendorSetting,
+  AgentGameSetting,
+} = require("../models");
 const { AppError } = require("../middlewares/errorHandler");
 const { Op } = require("sequelize");
 
@@ -16,6 +23,8 @@ class ZenithService {
   /**
    * Get all vendors with formatted category and currency codes,
    * filtered by agent's allowed_providers if agentId is provided.
+   * Get all vendors with agent-specific disable settings.
+   * For admin: can get all agent settings. For agent: only own settings.
    * @param {Object} filters - Filters for the query
    * @param {number} page - Page number for pagination
    * @param {number} limit - Number of items per page
@@ -23,7 +32,13 @@ class ZenithService {
    * @returns {Object} { vendors: Array, total: number }
    * @throws {AppError} If agent or agent settings not found, or on DB error
    */
-  async getAllVendors(filters = {}, page = 1, limit = 20, agentId = null) {
+  async getAllVendors(
+    filters = {},
+    page = 1,
+    limit = 20,
+    agentId = null,
+    isAdmin = false
+  ) {
     try {
       const offset = (page - 1) * limit;
       const where = {};
@@ -41,34 +56,36 @@ class ZenithService {
         where.categoryCode = { [Op.like]: `%${filters.type}%` };
       }
 
-      // Filter by status (enabled/disabled)
-      if (filters.status === "Enabled") {
-        where.is_disabled = false;
-      } else if (filters.status === "Disabled") {
-        where.is_disabled = true;
-      }
-
-      // --- Filter by agent's allowed_providers if agentId is provided ---
+      // Filter by agent's allowed_providers if agentId is provided
       let allowedProviders = null;
       if (agentId) {
-        // Fetch agent and settings
         const agent = await Agent.findByPk(agentId, {
           include: [{ model: AgentSettings, as: "settings" }],
         });
-        if (!agent) {
-          throw new AppError("Agent not found", 404);
-        }
-        if (!agent.settings) {
+        if (!agent) throw new AppError("Agent not found", 404);
+        if (!agent.settings)
           throw new AppError("Agent settings not found", 404);
-        }
-        // allowed_providers is an array (getter in model)
         allowedProviders = agent.settings.allowed_providers;
         if (!Array.isArray(allowedProviders) || allowedProviders.length === 0) {
-          // No allowed providers, return empty result
           return { vendors: [], total: 0 };
         }
-        // Only include vendors whose code is in allowedProviders
         where.code = { [Op.in]: allowedProviders };
+      }
+
+      // Include agent vendor settings
+      let include = [];
+      if (isAdmin) {
+        include.push({
+          model: AgentVendorSetting,
+          as: "agentSettings",
+        });
+      } else if (agentId) {
+        include.push({
+          model: AgentVendorSetting,
+          as: "agentSettings",
+          where: { agent_id: agentId },
+          required: false,
+        });
       }
 
       const { rows, count } = await ZenithVendor.findAndCountAll({
@@ -76,8 +93,56 @@ class ZenithService {
         offset,
         limit,
         order: [["id", "ASC"]],
+        include,
       });
-      const vendors = this.formatVendorData(rows);
+      // Always use formatVendorData to ensure correct structure
+      let vendors = this.formatVendorData(rows);
+
+      // Attach agent-specific is_disabled if present
+      vendors = vendors.map((data) => {
+        if (!isAdmin && agentId) {
+          // console.log(
+          //   "[DEBUG] agentId:",
+          //   agentId,
+          //   "agentSettings:",
+          //   data.agentSettings
+          // );
+          const setting = (data.agentSettings || []).find(
+            (s) => String(s.agent_id) === String(agentId)
+          );
+          // console.log(
+          //   "[DEBUG] Found setting for agentId:",
+          //   agentId,
+          //   "->",
+          //   setting
+          // );
+          data.agent_is_disabled = setting ? setting.is_disabled : false;
+        }
+        // delete data.agentSettings;
+        return data;
+      });
+
+      // Now filter by agent_is_disabled if requested
+      if (filters.status === "Enabled") {
+        vendors = vendors.filter((v) => !v.agent_is_disabled);
+      } else if (filters.status === "Disabled") {
+        vendors = vendors.filter((v) => v.agent_is_disabled);
+      }
+
+      // Debug: log any vendor with undefined categories
+      vendors.forEach((v) => {
+        if (!Array.isArray(v.categories)) {
+          console.error(
+            "[ZenithService.getAllVendors] Vendor ID",
+            v.id,
+            "has invalid categories:",
+            v.categories,
+            "categoryCode:",
+            v.categoryCode
+          );
+        }
+      });
+
       return { vendors, total: count };
     } catch (error) {
       if (error instanceof AppError) throw error;
@@ -208,6 +273,31 @@ class ZenithService {
   }
 
   /**
+   * Toggle the disabled state of a vendor for an agent (per-agent).
+   */
+  async toggleAgentVendorDisabled(agentId, vendorId, disabledState) {
+    try {
+      // Upsert AgentVendorSetting
+      let setting = await AgentVendorSetting.findOne({
+        where: { agent_id: agentId, vendor_id: vendorId },
+      });
+      if (setting) {
+        await setting.update({ is_disabled: disabledState });
+      } else {
+        setting = await AgentVendorSetting.create({
+          agent_id: agentId,
+          vendor_id: vendorId,
+          is_disabled: disabledState,
+        });
+      }
+      return setting;
+    } catch (error) {
+      console.error("Error toggling agent vendor disabled:", error);
+      throw new AppError("Failed to toggle agent vendor disabled", 500);
+    }
+  }
+
+  /**
    * Toggle the disabled state of a vendor
    * @param {number} id - Vendor ID
    * @param {boolean} disabledState - New disabled state
@@ -280,10 +370,18 @@ class ZenithService {
 
   /**
    * Get all games with formatted language, platform, and currency codes
+   * Get all games with agent-specific disable settings.
+   * For admin: can get all agent settings. For agent: only own settings.
    * @param {Object} filters - Optional filters for the query
    * @returns {Array} Array of game objects
    */
-  async getAllGames(filters = {}, page = 1, limit = 20) {
+  async getAllGames(
+    filters = {},
+    page = 1,
+    limit = 20,
+    agentId = null,
+    isAdmin = false
+  ) {
     try {
       const offset = (page - 1) * limit;
       const where = {};
@@ -299,7 +397,6 @@ class ZenithService {
           { gameName: { [Op.like]: `%${filters.search}%` } },
           { gameCode: { [Op.like]: `%${filters.search}%` } },
         ];
-        // If search is a number, allow searching by id
         if (!isNaN(Number(filters.search))) {
           where[Op.or].push({ id: Number(filters.search) });
         }
@@ -310,11 +407,26 @@ class ZenithService {
         where.categoryCode = filters.categoryCode;
       }
 
-      // Filter by status (enabled/disabled)
-      if (filters.status === "Enabled") {
-        where.is_disabled = false;
-      } else if (filters.status === "Disabled") {
-        where.is_disabled = true;
+      // Include agent game settings
+      let include = [
+        {
+          model: require("../models").ZenithVendor,
+          as: "vendor",
+          attributes: ["id", "name", "code"],
+        },
+      ];
+      if (isAdmin) {
+        include.push({
+          model: AgentGameSetting,
+          as: "agentSettings",
+        });
+      } else if (agentId) {
+        include.push({
+          model: AgentGameSetting,
+          as: "agentSettings",
+          where: { agent_id: agentId },
+          required: false,
+        });
       }
 
       const { rows, count } = await ZenithGame.findAndCountAll({
@@ -322,16 +434,49 @@ class ZenithService {
         offset,
         limit,
         order: [["id", "ASC"]],
-        include: [
-          {
-            model: ZenithVendor,
-            as: "vendor",
-            attributes: ["id", "name", "code"],
-          },
-        ],
+        include,
       });
 
-      const games = this.formatGameData(rows);
+      // Always use formatGameData to ensure correct structure
+      let games = this.formatGameData(rows);
+
+      // Attach agent-specific is_disabled if present
+      games = games.map((data) => {
+        if (!isAdmin && agentId) {
+          const setting = (data.agentSettings || []).find(
+            (s) => String(s.agent_id) === String(agentId)
+          );
+          data.agent_is_disabled = setting ? setting.is_disabled : false;
+        }
+        return data;
+      });
+
+      // Now filter by agent_is_disabled if requested
+      if (filters.status === "Enabled") {
+        games = games.filter((g) => !g.agent_is_disabled);
+      } else if (filters.status === "Disabled") {
+        games = games.filter((g) => g.agent_is_disabled);
+      }
+
+      // Debug: log any game with undefined languages/platforms/currencies
+      games.forEach((g) => {
+        if (
+          !Array.isArray(g.languages) ||
+          !Array.isArray(g.platforms) ||
+          !Array.isArray(g.currencies)
+        ) {
+          console.error(
+            "[ZenithService.getAllGames] Game ID",
+            g.id,
+            "has invalid arrays:",
+            {
+              languages: g.languages,
+              platforms: g.platforms,
+              currencies: g.currencies,
+            }
+          );
+        }
+      });
 
       return { games, total: count };
     } catch (error) {
@@ -509,6 +654,30 @@ class ZenithService {
       }
       console.error(`Error deleting game with ID ${id}:`, error);
       throw new AppError("Failed to delete game", 500);
+    }
+  }
+
+  /**
+   * Toggle the disabled state of a game for an agent (per-agent).
+   */
+  async toggleAgentGameDisabled(agentId, gameId, disabledState) {
+    try {
+      let setting = await AgentGameSetting.findOne({
+        where: { agent_id: agentId, game_id: gameId },
+      });
+      if (setting) {
+        await setting.update({ is_disabled: disabledState });
+      } else {
+        setting = await AgentGameSetting.create({
+          agent_id: agentId,
+          game_id: gameId,
+          is_disabled: disabledState,
+        });
+      }
+      return setting;
+    } catch (error) {
+      console.error("Error toggling agent game disabled:", error);
+      throw new AppError("Failed to toggle agent game disabled", 500);
     }
   }
 
