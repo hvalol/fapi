@@ -48,6 +48,7 @@ class AuthService {
         username: user.username,
         role: user.role,
         client_id: user.client_id,
+        agent_id: user.agent_id,
       },
       accessToken,
       refreshToken,

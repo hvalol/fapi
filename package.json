@@ -5,16 +5,14 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
-    "seed:reset": "node -e \"require('./src/seeders/seed.js').runWithSync(true)\"",
-    "seed": "node src/seeders/seed.js",
-    "seed:force": "node src/seeders/seed.js --force",
     "migrate": "node src/migrations/index.js",
     "migrate:direct": "node src/scripts/direct-migration.js",
     "migrate:rollback": "node src/migrations/index.js --rollback",
     "test": "echo \"No tests specified yet\"",
     "cleanup-db": "node src/scripts/cleanup-indexes.js",
     "seed:zenithVendor": "node src/seeders/zenithVendorSeed.js",
-    "seed:zenithGame": "node src/seeders/zenithGameSeed.js"
+    "seed:zenithGame": "node src/seeders/zenithGameSeed.js",
+    "seed:updatedSeed": "node src/seeders/mainSeeder.js"
   },
   "repository": {
     "type": "git",
@@ -39,6 +37,7 @@
     "jsonwebtoken": "^9.0.2",
     "mariadb": "^3.4.4",
     "morgan": "^1.10.1",
+    "mysql": "^2.18.1",
     "node-cron": "^4.2.1",
     "pdfkit": "^0.17.1",
     "sequelize": "^6.37.7",

@@ -322,7 +322,15 @@ class ZenithService {
         offset,
         limit,
         order: [["id", "ASC"]],
+        include: [
+          {
+            model: ZenithVendor,
+            as: "vendor",
+            attributes: ["id", "name", "code"],
+          },
+        ],
       });
+
       const games = this.formatGameData(rows);
 
       return { games, total: count };

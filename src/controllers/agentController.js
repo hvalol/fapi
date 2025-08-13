@@ -95,6 +95,11 @@ exports.createAgent = async (req, res, next) => {
           new AppError("You can only create agents for your own client", 403)
         );
       }
+      const currentAgent = await agentService.getAgentById(req.body.agent_id);
+
+      if (!currentAgent.can_create_subagent) {
+        return next(new AppError("This agent cannot create sub-agents", 403));
+      }
     }
 
     const agent = await agentService.createAgent(agentData);
