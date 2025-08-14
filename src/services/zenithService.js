@@ -458,6 +458,7 @@ class ZenithService {
         games = games.filter((g) => g.agent_is_disabled);
       }
 
+      console.log(games);
       // Debug: log any game with undefined languages/platforms/currencies
       games.forEach((g) => {
         if (

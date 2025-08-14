@@ -788,6 +788,127 @@ class ZenithController {
       next(error);
     }
   }
+
+  /* *********** admin ************ */
+
+  /**
+   * Get allowed vendors for a specific agent, including per-agent disable state.
+   * Only for admin.
+   */
+  async getAgentAllowedVendors(req, res, next) {
+    try {
+      if (!req.user || req.user.role !== "Admin") {
+        return next(new AppError("Forbidden", 403));
+      }
+      const agentId = parseInt(req.params.agentId);
+      if (isNaN(agentId)) {
+        return next(new AppError("Invalid agent ID", 400));
+      }
+      // Get allowed vendors for agent (from AgentSettings.allowed_providers)
+      const { vendors } = await zenithService.getAllVendors(
+        {},
+        1,
+        1000,
+        agentId,
+        false // not admin, so only allowed vendors
+      );
+      res.json({
+        status: "success",
+        data: { vendors },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Set vendor enable/disable for a specific agent (admin only)
+   */
+  async setAgentVendorDisabled(req, res, next) {
+    try {
+      if (!req.user || req.user.role !== "Admin") {
+        return next(new AppError("Forbidden", 403));
+      }
+      const agentId = parseInt(req.params.agentId);
+      const vendorId = parseInt(req.params.vendorId);
+      const { disabled } = req.body;
+      if (isNaN(agentId) || isNaN(vendorId)) {
+        return next(new AppError("Invalid agent or vendor ID", 400));
+      }
+      if (typeof disabled !== "boolean") {
+        return next(new AppError("disabled must be boolean", 400));
+      }
+      const setting = await zenithService.toggleAgentVendorDisabled(
+        agentId,
+        vendorId,
+        disabled
+      );
+      res.json({
+        status: "success",
+        data: {
+          agentVendorSetting: setting,
+          message: disabled
+            ? "Vendor disabled for agent"
+            : "Vendor enabled for agent",
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  // GAMES
+
+  async getAllAgentGames(req, res, next) {
+    try {
+      const filters = {
+        search: req.query.search,
+        categoryCode: req.query.categoryCode,
+        provider: req.query.provider,
+        status: req.query.status,
+      };
+
+      const page = parseInt(req.query.page) || 1;
+      const limit = parseInt(req.query.limit) || 20;
+
+      let agentId = null;
+      let isAdmin = false;
+
+      if (req.user && req.user.role === "Admin") {
+        isAdmin = true;
+        if (req.query.agentId) {
+          agentId = parseInt(req.query.agentId);
+          if (isNaN(agentId)) {
+            return next(new AppError("Invalid agent ID", 400));
+          }
+        }
+      } else {
+        if (req.user && req.query.agentId) {
+          agentId = req.query.agentId;
+        }
+      }
+
+      const { games, total } = await zenithService.getAllGames(
+        filters,
+        page,
+        limit,
+        agentId,
+        false
+      );
+
+      res.json({
+        status: "success",
+        data: {
+          games,
+          total,
+          page,
+          limit,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 
 module.exports = new ZenithController();

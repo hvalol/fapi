@@ -391,4 +391,58 @@ router.post(
   zenithController.enableGame
 );
 
+/* ********** ADMIN ********** */
+
+// Get allowed vendors for a specific agent (admin only)
+router.get(
+  "/agents/:agentId/vendors",
+  authorize("Admin"),
+  [
+    param("agentId").isInt().withMessage("Agent ID must be an integer"),
+    validateRequest,
+  ],
+  zenithController.getAgentAllowedVendors
+);
+
+// Set vendor enable/disable for agent (admin only)
+router.patch(
+  "/agents/:agentId/vendors/:vendorId/toggle-disabled",
+  authorize("Admin"),
+  [
+    param("agentId").isInt().withMessage("Agent ID must be an integer"),
+    param("vendorId").isInt().withMessage("Vendor ID must be an integer"),
+    body("disabled").isBoolean().withMessage("disabled must be boolean"),
+    validateRequest,
+  ],
+  zenithController.setAgentVendorDisabled
+);
+
+// GAMES
+
+// Get games for a specific agent (admin only)
+router.get(
+  "/agent/games",
+  authorize("Admin"),
+  [
+    query("vendorId")
+      .optional()
+      .isInt()
+      .withMessage("Vendor ID must be an integer"),
+    query("categoryCode")
+      .optional()
+      .isString()
+      .withMessage("Category code must be a string"),
+    query("isActive")
+      .optional()
+      .isBoolean()
+      .withMessage("isActive must be a boolean"),
+    query("isDisabled")
+      .optional()
+      .isBoolean()
+      .withMessage("isDisabled must be a boolean"),
+    validateRequest,
+  ],
+  zenithController.getAllAgentGames
+);
+
 module.exports = router;
