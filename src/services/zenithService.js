@@ -8,6 +8,7 @@ const {
 } = require("../models");
 const { AppError } = require("../middlewares/errorHandler");
 const { Op } = require("sequelize");
+const Sequelize = require("sequelize");
 
 /**
  * ZenithService
@@ -149,6 +150,26 @@ class ZenithService {
     } catch (error) {
       if (error instanceof AppError) throw error;
       console.error("Error fetching vendors:", error);
+      throw new AppError("Failed to fetch vendors", 500);
+    }
+  }
+
+  /**
+   * Get all vendors without agentId filtering (for admin or public use)
+   * @returns {Object} { vendors: Array, total: number }
+   */
+  async getAllVendorsNoAgent(page = 1, limit = 100) {
+    try {
+      const offset = (page - 1) * limit;
+      const { rows, count } = await ZenithVendor.findAndCountAll({
+        offset,
+        limit,
+        order: [["id", "ASC"]],
+      });
+      const vendors = this.formatVendorData(rows);
+      return { vendors, total: count };
+    } catch (error) {
+      console.error("Error fetching all vendors (no agent):", error);
       throw new AppError("Failed to fetch vendors", 500);
     }
   }
@@ -834,6 +855,112 @@ class ZenithService {
       console.error("Error upserting vendors:", error);
       throw new AppError("Failed to upsert vendors", 500);
     }
+  }
+
+  /**
+   * Get games for dashboard: only games from agent's allowed vendors, paginated.
+   * @param {number} agentId - Agent ID
+   * @param {Object} [filters={}] - Optional filters (e.g., search, categoryCode)
+   * @param {number} [page=1] - Page number
+   * @param {number} [limit=10] - Page size
+   * @returns {Promise<{games: Array, total: number}>}
+   */
+  async getDashboardGames(agentId, filters = {}, page = 1, limit = 10) {
+    try {
+      // Get agent and allowed providers
+      const agent = await Agent.findByPk(agentId, {
+        include: [{ model: AgentSettings, as: "settings" }],
+      });
+      if (!agent || !agent.settings) return { games: [], total: 0 };
+
+      const allowedProviders = agent.settings.allowed_providers;
+      if (!Array.isArray(allowedProviders) || allowedProviders.length === 0) {
+        return { games: [], total: 0 };
+      }
+
+      // Get vendor IDs for allowed providers
+      const allowedVendors = await ZenithVendor.findAll({
+        where: { code: { [Op.in]: allowedProviders } },
+        attributes: ["id"],
+      });
+      const allowedVendorIds = allowedVendors.map((v) => v.id);
+      if (allowedVendorIds.length === 0) return { games: [], total: 0 };
+
+      // Build where clause for games
+      const where = { vendor_id: { [Op.in]: allowedVendorIds } };
+
+      // Optional filters
+      if (filters.search) {
+        where[Op.or] = [
+          { gameName: { [Op.like]: `%${filters.search}%` } },
+          { gameCode: { [Op.like]: `%${filters.search}%` } },
+        ];
+      }
+      if (filters.categoryCode) {
+        where.categoryCode = filters.categoryCode;
+      }
+
+      // Pagination
+      const offset = (page - 1) * limit;
+
+      // Fetch games with count
+      const { rows, count } = await ZenithGame.findAndCountAll({
+        where,
+        include: [
+          {
+            model: ZenithVendor,
+            as: "vendor",
+            attributes: ["id", "name", "code"],
+          },
+        ],
+        order: [["id", "ASC"]],
+        offset,
+        limit,
+      });
+
+      return { games: this.formatGameData(rows), total: count };
+    } catch (error) {
+      console.error("Error in getDashboardGames:", error);
+      throw new AppError("Failed to fetch dashboard games", 500);
+    }
+  }
+
+  async getGamesCountPerVendor(agentId) {
+    // Get allowed vendor IDs for agent
+    const agent = await Agent.findByPk(agentId, {
+      include: [{ model: AgentSettings, as: "settings" }],
+    });
+    if (!agent || !agent.settings) return {};
+
+    const allowedProviders = agent.settings.allowed_providers;
+    if (!Array.isArray(allowedProviders) || allowedProviders.length === 0) {
+      return {};
+    }
+
+    const allowedVendors = await ZenithVendor.findAll({
+      where: { code: { [Op.in]: allowedProviders } },
+      attributes: ["id"],
+    });
+    const allowedVendorIds = allowedVendors.map((v) => v.id);
+    if (allowedVendorIds.length === 0) return {};
+
+    // Count games per vendor
+    const counts = await ZenithGame.findAll({
+      where: { vendor_id: { [Op.in]: allowedVendorIds } },
+      attributes: [
+        "vendor_id",
+        [Sequelize.fn("COUNT", Sequelize.col("id")), "gamesCount"],
+      ],
+      group: ["vendor_id"],
+      raw: true,
+    });
+
+    // Convert to { [vendorId]: count }
+    const result = {};
+    counts.forEach((row) => {
+      result[row.vendor_id] = Number(row.gamesCount);
+    });
+    return result;
   }
 }
 

@@ -1,6 +1,6 @@
 const { DataTypes } = require("sequelize");
 const sequelize = require("../config/database");
-
+// TODO: ADD DUE DATE PROPERTY
 const ClientBilling = sequelize.define(
   "ClientBilling",
   {

@@ -50,24 +50,14 @@ class ClientDashboardService {
         }
         vendorsCount = allVendors.length;
 
-        // Fetch all games for allowed vendors (no limit, all pages)
-        const allowedVendorIds = allVendors.map((v) => v.id);
-        let allGames = [];
-        page = 1;
-        hasMore = true;
-        while (hasMore) {
-          const { games } = await zenithService.getAllGames(
-            { vendor_id: { [Op.in]: allowedVendorIds } },
-            page,
-            1000,
-            agentId,
-            false
-          );
-          allGames = allGames.concat(games);
-          hasMore = games.length === 1000;
-          page += 1;
-        }
-        gamesCount = allGames.length;
+        // Fetch only the total games count (no need to fetch all games)
+        const { total } = await zenithService.getDashboardGames(
+          agentId,
+          {},
+          1,
+          1
+        );
+        gamesCount = total;
       }
 
       // Count agents for this client
@@ -168,6 +158,7 @@ class ClientDashboardService {
   /**
    * Get games and vendors data for client dashboard
    * @param {number} clientId - Client ID
+   * @param {Object} options - { filters, page, pageSize }
    * @returns {Object} Games and vendors data
    */
   async getGamesAndVendors(clientId, options = {}) {
@@ -178,58 +169,47 @@ class ClientDashboardService {
         include: [{ model: models.AgentSettings, as: "settings" }],
       });
       if (!agent || !agent.settings) {
-        return { games: [], vendors: [] };
+        return { games: [], vendors: [], totalGames: 0 };
       }
       const agentId = agent.id;
 
       const filters = options.filters || {};
+      const page = options.page || 1;
+      const pageSize = options.pageSize || 10;
 
       // Fetch all vendors (no limit, all pages)
       let allVendors = [];
-      let page = 1;
+      let vPage = 1;
       let hasMore = true;
       while (hasMore) {
         const { vendors } = await zenithService.getAllVendors(
           filters.vendor || {},
-          page,
+          vPage,
           1000,
           agentId,
           false
         );
         allVendors = allVendors.concat(vendors);
         hasMore = vendors.length === 1000;
-        page += 1;
+        vPage += 1;
       }
 
-      // Only get games for allowed vendors
-      const allowedVendorIds = allVendors.map((v) => v.id);
+      // Fetch paginated games for dashboard (filtered by allowed vendors)
+      const { games, total } = await zenithService.getDashboardGames(
+        agentId,
+        filters.game || {},
+        page,
+        pageSize
+      );
 
-      // Merge any additional filters for games
-      const gamesFilters = {
-        ...(filters.game || {}),
-        vendor_id: { [Op.in]: allowedVendorIds },
-      };
-
-      // Fetch all games (no limit, all pages)
-      let allGames = [];
-      page = 1;
-      hasMore = true;
-      while (hasMore) {
-        const { games } = await zenithService.getAllGames(
-          gamesFilters,
-          page,
-          1000,
-          agentId,
-          false
-        );
-        allGames = allGames.concat(games);
-        hasMore = games.length === 1000;
-        page += 1;
-      }
+      // Fetch games count per vendor
+      const gamesCountPerVendor = await zenithService.getGamesCountPerVendor(
+        agentId
+      );
 
       // Create a map of vendorId to games for quick lookup
       const gamesByVendorId = {};
-      allGames.forEach((game) => {
+      games.forEach((game) => {
         const vendorId = game.vendor_id || (game.vendor && game.vendor.id);
         if (!vendorId) return;
         if (!gamesByVendorId[vendorId]) gamesByVendorId[vendorId] = [];
@@ -237,7 +217,7 @@ class ClientDashboardService {
       });
 
       // Format games data for frontend
-      const formattedGames = allGames.map((game) => ({
+      const formattedGames = games.map((game) => ({
         id: game.id,
         name: game.gameName,
         vendor: game.vendor ? game.vendor.name : "Unknown",
@@ -250,9 +230,7 @@ class ClientDashboardService {
       const formattedVendors = allVendors.map((vendor) => ({
         id: vendor.id,
         name: vendor.name,
-        gamesCount: Array.isArray(gamesByVendorId[vendor.id])
-          ? gamesByVendorId[vendor.id].length
-          : 0,
+        gamesCount: gamesCountPerVendor[vendor.id] || 0,
         status: vendor.is_disabled ? "inactive" : "active",
         categories:
           Array.isArray(vendor.categories) && vendor.categories.length > 0
@@ -263,6 +241,7 @@ class ClientDashboardService {
       return {
         games: formattedGames,
         vendors: formattedVendors,
+        totalGames: total,
       };
     } catch (error) {
       console.error("Error in getGamesAndVendors service:", error);

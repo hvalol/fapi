@@ -69,6 +69,26 @@ class ZenithController {
   }
 
   /**
+   * Get all vendors without agentId filtering (public/admin)
+   */
+  async getAllVendorsNoAgent(req, res, next) {
+    try {
+      const page = parseInt(req.query.page) || 1;
+      const limit = parseInt(req.query.limit) || 100;
+      const { vendors, total } = await zenithService.getAllVendorsNoAgent(
+        page,
+        limit
+      );
+      res.json({
+        status: "success",
+        data: { vendors, total, page, limit, count: vendors.length },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
    * Get vendor by ID
    * @param {Object} req - Express request object
    * @param {Object} res - Express response object

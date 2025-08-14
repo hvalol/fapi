@@ -26,6 +26,9 @@ router.get("/syncGames", zenithController.syncGamesApi);
 // Get all vendors
 router.get("/vendors", zenithController.getAllVendors);
 
+// get all vendors without filter
+router.get("/vendors/all", zenithController.getAllVendorsNoAgent);
+
 // Get vendor by ID
 router.get(
   "/vendors/:id",

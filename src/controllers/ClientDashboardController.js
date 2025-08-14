@@ -36,9 +36,14 @@ exports.getGamesAndVendors = async (req, res, next) => {
       return next(new AppError("No client associated with this user", 400));
     }
 
-    // console.log(clientId);
-    // This will now only return allowed vendors/games for the agent
-    const data = await clientDashboardService.getGamesAndVendors(clientId);
+    const page = parseInt(req.query.page) || 1;
+    const pageSize = parseInt(req.query.pageSize) || 10;
+
+    const data = await clientDashboardService.getGamesAndVendors(clientId, {
+      filters: req.query.filters ? JSON.parse(req.query.filters) : {},
+      page,
+      pageSize,
+    });
 
     res.status(200).json({
       status: "success",
