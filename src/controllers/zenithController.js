@@ -44,7 +44,7 @@ class ZenithController {
           agentId = req.query.agentId;
         }
       }
-
+      console.log("query", req.query);
       const { vendors, total } = await zenithService.getAllVendors(
         filters,
         page,

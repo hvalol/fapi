@@ -70,6 +70,8 @@ class ZenithService {
           return { vendors: [], total: 0 };
         }
         where.code = { [Op.in]: allowedProviders };
+      } else {
+        throw new AppError("Failed to fetch vendors", 500);
       }
 
       // Include agent vendor settings
@@ -458,7 +460,7 @@ class ZenithService {
         games = games.filter((g) => g.agent_is_disabled);
       }
 
-      console.log(games);
+      // console.log(games);
       // Debug: log any game with undefined languages/platforms/currencies
       games.forEach((g) => {
         if (

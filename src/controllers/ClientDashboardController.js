@@ -36,6 +36,8 @@ exports.getGamesAndVendors = async (req, res, next) => {
       return next(new AppError("No client associated with this user", 400));
     }
 
+    // console.log(clientId);
+    // This will now only return allowed vendors/games for the agent
     const data = await clientDashboardService.getGamesAndVendors(clientId);
 
     res.status(200).json({

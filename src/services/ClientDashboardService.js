@@ -1,6 +1,7 @@
 const { Op } = require("sequelize");
 const models = require("../models");
 const { AppError } = require("../middlewares/errorHandler");
+const zenithService = require("./zenithService");
 
 /**
  * Service for client dashboard operations
@@ -19,33 +20,55 @@ class ClientDashboardService {
         throw new AppError("Client not found", 404);
       }
 
-      // Initialize default dashboard data
-      const dashboardData = {
-        gamesCount: 0,
-        vendorsCount: 0,
-        agentsCount: 0,
-        outstandingBalance: 0,
-        hasUnpaidBilling: false,
-        billingMessage: "",
-      };
-
-      // Count Zenith games
-      const zenithGamesCount = await models.ZenithGame.count({
-        where: {
-          is_active: true,
-          is_disabled: false,
-        },
+      // Find the agent for this client (assuming one agent per client for dashboard)
+      const agent = await models.Agent.findOne({
+        where: { client_id: clientId, status: "active" },
+        include: [{ model: models.AgentSettings, as: "settings" }],
       });
-      dashboardData.gamesCount = zenithGamesCount;
 
-      // Count Zenith vendors
-      const zenithVendorsCount = await models.ZenithVendor.count({
-        where: {
-          is_active: true,
-          is_disabled: false,
-        },
-      });
-      dashboardData.vendorsCount = zenithVendorsCount;
+      let gamesCount = 0;
+      let vendorsCount = 0;
+
+      if (agent && agent.settings) {
+        const agentId = agent.id;
+
+        // Fetch all vendors (no limit, all pages)
+        let allVendors = [];
+        let page = 1;
+        let hasMore = true;
+        while (hasMore) {
+          const { vendors } = await zenithService.getAllVendors(
+            {},
+            page,
+            1000,
+            agentId,
+            false
+          );
+          allVendors = allVendors.concat(vendors);
+          hasMore = vendors.length === 1000;
+          page += 1;
+        }
+        vendorsCount = allVendors.length;
+
+        // Fetch all games for allowed vendors (no limit, all pages)
+        const allowedVendorIds = allVendors.map((v) => v.id);
+        let allGames = [];
+        page = 1;
+        hasMore = true;
+        while (hasMore) {
+          const { games } = await zenithService.getAllGames(
+            { vendor_id: { [Op.in]: allowedVendorIds } },
+            page,
+            1000,
+            agentId,
+            false
+          );
+          allGames = allGames.concat(games);
+          hasMore = games.length === 1000;
+          page += 1;
+        }
+        gamesCount = allGames.length;
+      }
 
       // Count agents for this client
       const agentsCount = await models.Agent.count({
@@ -54,24 +77,25 @@ class ClientDashboardService {
           status: "active",
         },
       });
-      dashboardData.agentsCount = agentsCount;
 
       // Get billing information and outstanding balance
       const { outstandingBalance, hasUnpaidBilling, billingMessage } =
         await this.getClientBillingInfo(clientId);
 
-      // Update dashboard data with billing info
-      dashboardData.outstandingBalance = outstandingBalance;
-      dashboardData.hasUnpaidBilling = hasUnpaidBilling;
-      dashboardData.billingMessage = billingMessage;
-
-      return dashboardData;
+      // Return summary using only allowed games/vendors
+      return {
+        gamesCount,
+        vendorsCount,
+        agentsCount,
+        outstandingBalance,
+        hasUnpaidBilling,
+        billingMessage,
+      };
     } catch (error) {
       console.error("Error in getDashboardSummary service:", error);
       throw error;
     }
   }
-
   /**
    * Get client billing information
    * @param {number} clientId - Client ID
@@ -146,81 +170,99 @@ class ClientDashboardService {
    * @param {number} clientId - Client ID
    * @returns {Object} Games and vendors data
    */
-  async getGamesAndVendors(clientId) {
+  async getGamesAndVendors(clientId, options = {}) {
     try {
-      // Fetch games from ZenithGame model
-      const zenithGames = await models.ZenithGame.findAll({
-        where: {
-          is_active: true,
-        },
-        include: [
-          {
-            model: models.ZenithVendor,
-            as: "vendor",
-            attributes: ["id", "name", "code"],
-            where: {
-              is_active: true,
-              is_disabled: false,
-            },
-          },
-        ],
-        limit: 100,
+      // Find the agent for this client (assuming one agent per client for dashboard)
+      const agent = await models.Agent.findOne({
+        where: { client_id: clientId, status: "active" },
+        include: [{ model: models.AgentSettings, as: "settings" }],
       });
+      if (!agent || !agent.settings) {
+        return { games: [], vendors: [] };
+      }
+      const agentId = agent.id;
 
-      // Fetch vendors from ZenithVendor model
-      const zenithVendors = await models.ZenithVendor.findAll({
-        where: {
-          is_active: true,
-        },
-        include: [
-          {
-            model: models.ZenithGame,
-            as: "games",
-            where: {
-              is_active: true,
-            },
-            required: false,
-          },
-        ],
+      const filters = options.filters || {};
+
+      // Fetch all vendors (no limit, all pages)
+      let allVendors = [];
+      let page = 1;
+      let hasMore = true;
+      while (hasMore) {
+        const { vendors } = await zenithService.getAllVendors(
+          filters.vendor || {},
+          page,
+          1000,
+          agentId,
+          false
+        );
+        allVendors = allVendors.concat(vendors);
+        hasMore = vendors.length === 1000;
+        page += 1;
+      }
+
+      // Only get games for allowed vendors
+      const allowedVendorIds = allVendors.map((v) => v.id);
+
+      // Merge any additional filters for games
+      const gamesFilters = {
+        ...(filters.game || {}),
+        vendor_id: { [Op.in]: allowedVendorIds },
+      };
+
+      // Fetch all games (no limit, all pages)
+      let allGames = [];
+      page = 1;
+      hasMore = true;
+      while (hasMore) {
+        const { games } = await zenithService.getAllGames(
+          gamesFilters,
+          page,
+          1000,
+          agentId,
+          false
+        );
+        allGames = allGames.concat(games);
+        hasMore = games.length === 1000;
+        page += 1;
+      }
+
+      // Create a map of vendorId to games for quick lookup
+      const gamesByVendorId = {};
+      allGames.forEach((game) => {
+        const vendorId = game.vendor_id || (game.vendor && game.vendor.id);
+        if (!vendorId) return;
+        if (!gamesByVendorId[vendorId]) gamesByVendorId[vendorId] = [];
+        gamesByVendorId[vendorId].push(game);
       });
 
       // Format games data for frontend
-      const games = zenithGames.map((game) => {
-        const gameData = game.toJSON();
+      const formattedGames = allGames.map((game) => ({
+        id: game.id,
+        name: game.gameName,
+        vendor: game.vendor ? game.vendor.name : "Unknown",
+        category: game.categoryCode || "Uncategorized",
+        popular: false,
+        status: game.is_disabled ? "inactive" : "active",
+      }));
 
-        return {
-          id: gameData.id,
-          name: gameData.gameName,
-          vendor: gameData.vendor ? gameData.vendor.name : "Unknown",
-          category: gameData.categoryCode || "Uncategorized",
-          popular: false, // Could be enhanced with real data in the future
-          status: gameData.is_disabled ? "inactive" : "active",
-        };
-      });
-
-      // Format vendors data for frontend
-      const vendors = zenithVendors.map((vendor) => {
-        const vendorData = vendor.toJSON();
-        // Parse category codes from comma-separated string if present
-        let categories = [];
-        if (vendorData.categoryCode) {
-          categories = vendorData.categoryCode
-            .split(",")
-            .map((cat) => cat.trim());
-        }
-
-        return {
-          id: vendorData.id,
-          name: vendorData.name,
-          gamesCount: vendorData.games ? vendorData.games.length : 0,
-          status: vendorData.is_disabled ? "inactive" : "active",
-          categories: categories.length > 0 ? categories : ["General"],
-        };
-      });
+      // Format vendors data for frontend, with correct gamesCount
+      const formattedVendors = allVendors.map((vendor) => ({
+        id: vendor.id,
+        name: vendor.name,
+        gamesCount: Array.isArray(gamesByVendorId[vendor.id])
+          ? gamesByVendorId[vendor.id].length
+          : 0,
+        status: vendor.is_disabled ? "inactive" : "active",
+        categories:
+          Array.isArray(vendor.categories) && vendor.categories.length > 0
+            ? vendor.categories
+            : ["General"],
+      }));
 
       return {
-        games,
-        vendors,
+        games: formattedGames,
+        vendors: formattedVendors,
       };
     } catch (error) {
       console.error("Error in getGamesAndVendors service:", error);
