@@ -28,7 +28,15 @@ exports.login = async (req, res, next) => {
       },
     });
   } catch (error) {
-    next(error);
+    // Log error details for internal debugging
+    console.error("Login error:", error);
+
+    // Send only generic error message to client
+    if (error instanceof AppError) {
+      next(error);
+    } else {
+      next(new AppError("An error occurred during login", 500));
+    }
   }
 };
 
@@ -49,7 +57,8 @@ exports.logout = async (req, res, next) => {
       message: "Logged out successfully",
     });
   } catch (error) {
-    next(error);
+    console.error("Logout error:", error);
+    next(new AppError("An error occurred during logout", 500));
   }
 };
 
@@ -72,7 +81,12 @@ exports.refreshToken = async (req, res, next) => {
       },
     });
   } catch (error) {
-    next(error);
+    console.error("Refresh token error:", error);
+    if (error instanceof AppError) {
+      next(error);
+    } else {
+      next(new AppError("An error occurred during token refresh", 500));
+    }
   }
 };
 
