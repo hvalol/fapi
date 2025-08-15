@@ -62,7 +62,7 @@ const ClientBilling = sequelize.define(
       allowNull: false,
       defaultValue: 0,
     },
-    date_posted: {
+    due_date: {
       type: DataTypes.DATE,
       allowNull: false,
     },

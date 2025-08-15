@@ -91,7 +91,7 @@ exports.addCharge = async (req, res, next) => {
               `Month ${chargeData.billingMonth}`,
             totalGGR: parseFloat(chargeData.totalGGR || 0),
             shareAmount: parseFloat(chargeData.amount),
-            datePosted: chargeData.date,
+            dueDate: chargeData.dueDate,
             gameProvider: chargeData.gameProvider,
           };
         }
@@ -114,7 +114,7 @@ exports.addCharge = async (req, res, next) => {
               `Month ${chargeData.billingMonth}`,
             totalGGR: parseFloat(chargeData.totalGgrUsd || 0),
             shareAmount: parseFloat(chargeData.amount),
-            datePosted: chargeData.date,
+            dueDate: chargeData.dueDate,
             gameProvider: chargeData.gameProvider,
           };
         }

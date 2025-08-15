@@ -295,8 +295,12 @@ class ZenithController {
           return next(new AppError("agentId is required for admin", 400));
         }
       } else {
-        if (req.user && req.body.agentId) {
-          agentId = req.body.agentId;
+        console.log("reqy", req.body);
+        if (
+          req.user &&
+          (req.body.agentId || req.query.agentId || req.params.agentId)
+        ) {
+          agentId = req.body.agentId || req.query.agentId || req.params.agentId;
         } else {
           return next(new AppError("You do not have permission", 403));
         }
@@ -645,7 +649,7 @@ class ZenithController {
 
       // 1. Get all vendors
       console.log("[syncGamesApi] Fetching all vendors...");
-      const { vendors } = await zenithService.getAllVendors();
+      const { vendors } = await zenithService.getAllVendorsNoAgent();
       console.log(`[syncGamesApi] Found ${vendors.length} vendors.`);
 
       let allGames = [];

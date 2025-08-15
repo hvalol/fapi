@@ -129,13 +129,13 @@ class ClientDashboardService {
             client_id: clientId,
             status: "Unpaid",
           },
-          order: [["date_posted", "ASC"]],
+          order: [["due_date", "ASC"]],
         });
 
         if (clientBillings && clientBillings.length > 0) {
           // Get the earliest due date for message
           const earliestBilling = clientBillings[0];
-          const dueDate = new Date(earliestBilling.date_posted);
+          const dueDate = new Date(earliestBilling.due_date);
           // Format date as MM/DD/YYYY
           const formattedDate = dueDate.toLocaleDateString();
           billingMessage = `You have unpaid billings due on ${formattedDate}`;
@@ -326,14 +326,14 @@ class ClientDashboardService {
       // Fetch client billings
       const clientBillings = await models.ClientBilling.findAll({
         where: { client_id: clientId },
-        order: [["date_posted", "DESC"]],
+        order: [["created_at", "DESC"]],
         limit: 10,
       });
 
       // Fetch client transactions
       const clientTransactions = await models.ClientTransaction.findAll({
         where: { client_id: clientId },
-        order: [["date", "DESC"]],
+        order: [["created_at", "DESC"]],
         limit: 10,
       });
 
@@ -342,12 +342,8 @@ class ClientDashboardService {
         const billingData = billing.toJSON();
         return {
           id: `INV-${billingData.id}`,
-          date: billingData.date_posted,
-          dueDate: new Date(
-            new Date(billingData.date_posted).setDate(
-              new Date(billingData.date_posted).getDate() + 30
-            )
-          ), // Due date is 30 days after posting
+          date: billingData.created_at,
+          dueDate: billingData.due_date,
           amount: parseFloat(billingData.final_amount),
           status: billingData.status.toLowerCase(),
           period: billingData.label,
@@ -360,7 +356,7 @@ class ClientDashboardService {
         const txData = transaction.toJSON();
         return {
           id: `TRX-${txData.id}`,
-          date: txData.date,
+          date: txData.created_at,
           amount: Math.abs(parseFloat(txData.amount)),
           type: txData.type.toLowerCase(),
           method: txData.payment_method || "N/A",
@@ -405,12 +401,7 @@ class ClientDashboardService {
         (billing) => billing.status === "Unpaid"
       );
       if (unpaidBilling) {
-        // Due date is 30 days after posting
-        nextDueDate = new Date(
-          new Date(unpaidBilling.date_posted).setDate(
-            new Date(unpaidBilling.date_posted).getDate() + 30
-          )
-        );
+        nextDueDate = unpaidBilling.due_date;
       }
 
       return {

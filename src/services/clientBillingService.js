@@ -72,7 +72,7 @@ class ClientBillingService {
             as: "transactions",
             required: false,
             limit: 50,
-            order: [["date", "DESC"]],
+            order: [["created_at", "DESC"]],
           },
         ],
         order: [["name", "ASC"]],
@@ -117,7 +117,7 @@ class ClientBillingService {
             model: ClientTransaction,
             as: "transactions",
             required: false,
-            order: [["date", "DESC"]],
+            order: [["created_at", "DESC"]],
           },
         ],
       });
@@ -270,7 +270,7 @@ class ClientBillingService {
       const transactionHistory = rawClient.transactions
         ? rawClient.transactions.map((t) => ({
             id: t.id,
-            date: t.date,
+            date: t.createdAt,
             type: t.type,
             amount: t.amount,
             balanceAfter: t.balance_after,
@@ -309,7 +309,8 @@ class ClientBillingService {
               currency: b.currency, // Will be USD for multi-currency
               totalGGR: b.total_ggr, // Total in USD
               shareAmount: b.share_amount, // This is in USD
-              datePosted: b.date_posted,
+              dueDate: b.due_date,
+              datePosted: b.created_at,
               status: b.status,
               // Include payment info
               paidAmount: paidAmount,
@@ -465,7 +466,7 @@ class ClientBillingService {
       const lastTransaction = await ClientTransaction.findOne({
         where: { client_id: clientId },
         order: [
-          ["date", "DESC"],
+          ["created_at", "DESC"],
           ["id", "DESC"],
         ],
         transaction,
@@ -553,7 +554,7 @@ class ClientBillingService {
             share_percentage: sharePercentage,
             platform_fee: platformFee,
             final_amount: finalAmountUsd,
-            date_posted: chargeData.date || new Date(),
+            due_date: chargeData.dueDate || new Date(),
             status: "Unpaid",
             notes:
               chargeData.remarks ||
@@ -588,7 +589,7 @@ class ClientBillingService {
             amount: -chargeAmount, // Negative amount for charges
             balance_before: currentBalance,
             balance_after: currentBalance + chargeAmount,
-            date: chargeData.date || new Date(),
+            due_date: chargeData.dueDate || new Date(),
             remarks: chargeData.remarks || `${chargeData.type} charge`,
             reference_number: chargeData.referenceNumber,
             currency: "USD", // Always store charges in USD
@@ -608,7 +609,7 @@ class ClientBillingService {
             amount: -chargeAmount, // Negative amount for charges (consistent with financial convention)
             balance_before: currentBalance,
             balance_after: newBalance,
-            date: chargeData.date || new Date(),
+            due_date: chargeData.dueDate || new Date(),
             remarks: chargeData.remarks || `${chargeData.type} charge`,
             reference_number: chargeData.referenceNumber,
             currency: "USD", // Always store charges in USD
@@ -748,7 +749,7 @@ class ClientBillingService {
       const lastTransaction = await ClientTransaction.findOne({
         where: { client_id: clientId },
         order: [
-          ["date", "DESC"],
+          ["created_at", "DESC"],
           ["id", "DESC"],
         ],
         transaction,
@@ -809,7 +810,7 @@ class ClientBillingService {
           amount: paymentAmount,
           balance_before: currentBalance,
           balance_after: newBalance,
-          date: paymentData.date || new Date(),
+          due_date: paymentData.dueDate || new Date(),
           remarks:
             paymentData.remarks ||
             generateDefaultRemarks(paymentData, unpaidBillings),
@@ -985,7 +986,7 @@ class ClientBillingService {
       .text(`Client: ${client.name}`, { align: "left" })
       .text(`Statement Period: ${billing.label}`, { align: "left" })
       .text(
-        `Date Issued: ${new Date(billing.date_posted).toLocaleDateString()}`,
+        `Date Issued: ${new Date(billing.created_at).toLocaleDateString()}`,
         {
           align: "left",
         }
@@ -1102,7 +1103,7 @@ class ClientBillingService {
           platform_fee: billingData.platformFee || 0,
           adjustments: billingData.adjustments || 0,
           final_amount: finalAmount,
-          date_posted: billingData.datePosted || new Date(),
+          due_date: billingData.dueDate /*|| new Date()*/,
           status: "Unpaid",
           notes: billingData.notes,
         },
@@ -1112,7 +1113,7 @@ class ClientBillingService {
       // Create a transaction record for this billing
       const lastTransaction = await ClientTransaction.findOne({
         where: { client_id: clientId },
-        order: [["date", "DESC"]],
+        order: [["due_date", "DESC"]],
         transaction,
       });
 
@@ -1128,7 +1129,7 @@ class ClientBillingService {
           amount: -finalAmount, // Negative amount for dues
           balance_before: currentBalance,
           balance_after: newBalance,
-          date: billingData.datePosted || new Date(),
+          due_date: billingData.dueDate || new Date(),
           remarks: `Share due for ${billingData.label}`,
           related_billing_id: billing.id,
         },

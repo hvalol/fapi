@@ -87,12 +87,12 @@ class AdminDashboardService {
         // Find earliest due billing globally
         const clientBillings = await models.ClientBilling.findAll({
           where: { status: "Unpaid" },
-          order: [["date_posted", "ASC"]],
+          order: [["created_at", "ASC"]],
         });
 
         if (clientBillings && clientBillings.length > 0) {
           const earliestBilling = clientBillings[0];
-          const dueDate = new Date(earliestBilling.date_posted);
+          const dueDate = new Date(earliestBilling.due_date);
           const formattedDate = dueDate.toLocaleDateString();
           billingMessage = `There are unpaid billings due on ${formattedDate}`;
         } else {
@@ -133,7 +133,6 @@ class AdminDashboardService {
             },
           },
         ],
-        limit: 100,
       });
 
       // Fetch vendors from ZenithVendor model
@@ -267,13 +266,13 @@ class AdminDashboardService {
     try {
       // Fetch all billings
       const clientBillings = await models.ClientBilling.findAll({
-        order: [["date_posted", "DESC"]],
+        order: [["created_at", "DESC"]],
         limit: 10,
       });
 
       // Fetch all transactions
       const clientTransactions = await models.ClientTransaction.findAll({
-        order: [["date", "DESC"]],
+        order: [["created_at", "DESC"]],
         limit: 10,
       });
 
@@ -282,12 +281,8 @@ class AdminDashboardService {
         const billingData = billing.toJSON();
         return {
           id: `INV-${billingData.id}`,
-          date: billingData.date_posted,
-          dueDate: new Date(
-            new Date(billingData.date_posted).setDate(
-              new Date(billingData.date_posted).getDate() + 30
-            )
-          ),
+          date: billingData.created_at,
+          dueDate: billingData.due_date,
           amount: parseFloat(billingData.final_amount),
           status: billingData.status.toLowerCase(),
           period: billingData.label,
@@ -300,7 +295,7 @@ class AdminDashboardService {
         const txData = transaction.toJSON();
         return {
           id: `TRX-${txData.id}`,
-          date: txData.date,
+          date: txData.created_at,
           amount: Math.abs(parseFloat(txData.amount)),
           type: txData.type.toLowerCase(),
           method: txData.payment_method || "N/A",
@@ -331,7 +326,7 @@ class AdminDashboardService {
       );
       if (lastPaymentTx) {
         lastPayment = Math.abs(parseFloat(lastPaymentTx.amount));
-        lastPaymentDate = lastPaymentTx.date;
+        lastPaymentDate = lastPaymentTx.created_at;
       }
 
       // Find next due date (earliest unpaid billing)
@@ -339,11 +334,7 @@ class AdminDashboardService {
         (billing) => billing.status === "Unpaid"
       );
       if (unpaidBilling) {
-        nextDueDate = new Date(
-          new Date(unpaidBilling.date_posted).setDate(
-            new Date(unpaidBilling.date_posted).getDate() + 30
-          )
-        );
+        nextDueDate = unpaidBilling.due_date;
       }
 
       return {
