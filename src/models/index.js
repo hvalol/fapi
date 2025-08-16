@@ -18,6 +18,8 @@ const AdminLogsArchive = require("./AdminLogsArchive");
 const ClientLogsArchive = require("./ClientLogsArchive");
 const AgentVendorSetting = require("./AgentVendorSetting");
 const AgentGameSetting = require("./AgentGameSetting");
+const Transaction = require("./Transaction")(sequelize);
+const TransactionAudit = require("./TransactionAudit")(sequelize);
 
 // Client-User Association
 Client.hasMany(User, { foreignKey: "client_id", as: "users" });
@@ -50,7 +52,7 @@ ClientBilling.belongsTo(Client, { foreignKey: "client_id" });
 // Client-ClientTransaction Association
 Client.hasMany(ClientTransaction, {
   foreignKey: "client_id",
-  as: "transactions",
+  as: "clientTransactions",
 });
 ClientTransaction.belongsTo(Client, { foreignKey: "client_id" });
 
@@ -136,6 +138,38 @@ ZenithGame.hasMany(AgentGameSetting, {
 });
 AgentGameSetting.belongsTo(ZenithGame, { foreignKey: "game_id", as: "game" });
 
+// ==== transactions ======== //
+Transaction.hasMany(TransactionAudit, {
+  foreignKey: "transaction_id",
+  as: "audits",
+});
+TransactionAudit.belongsTo(Transaction, {
+  foreignKey: "transaction_id",
+  as: "transaction",
+});
+
+// Transaction - Client
+Client.hasMany(Transaction, { foreignKey: "client_id", as: "transactions" });
+Transaction.belongsTo(Client, { foreignKey: "client_id", as: "client" });
+
+// Transaction - Agent
+Agent.hasMany(Transaction, { foreignKey: "agent_id", as: "transactions" });
+Transaction.belongsTo(Agent, { foreignKey: "agent_id", as: "agent" });
+
+// TransactionAudit - Client
+Client.hasMany(TransactionAudit, {
+  foreignKey: "client_id",
+  as: "transactionAudits",
+});
+TransactionAudit.belongsTo(Client, { foreignKey: "client_id", as: "client" });
+
+// TransactionAudit - Agent
+Agent.hasMany(TransactionAudit, {
+  foreignKey: "agent_id",
+  as: "transactionAudits",
+});
+TransactionAudit.belongsTo(Agent, { foreignKey: "agent_id", as: "agent" });
+
 module.exports = {
   sequelize,
   User,
@@ -156,4 +190,6 @@ module.exports = {
   ClientLogsArchive,
   AgentVendorSetting,
   AgentGameSetting,
+  Transaction,
+  TransactionAudit,
 };

@@ -2,7 +2,7 @@ const { hashPassword } = require("../utils/authUtils");
 const { sequelize, User } = require("../models");
 const seedZenithVendors = require("./zenithVendorSeed");
 const seedZenithGames = require("./zenithGameSeed");
-
+const seedTransactions = require("./transactionsSeed");
 async function seedAdminUser() {
   const adminUsername = "admin";
   const adminPassword = "admin123"; // Change this in production!
@@ -33,6 +33,7 @@ async function runAllSeeders() {
     await seedAdminUser();
     await seedZenithVendors();
     // await seedZenithGames();
+    await seedTransactions();
 
     console.log("All seeds completed.");
     process.exit(0);

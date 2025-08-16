@@ -67,6 +67,7 @@ class AuthService {
         username: user.username,
         role: user.role,
         client_id: user.client_id,
+        agent_id: user.agent_id,
       },
       jwtConfig.secret,
       { expiresIn: jwtConfig.expiresIn }
@@ -129,6 +130,7 @@ class AuthService {
           username: user.username,
           role: user.role,
           client_id: user.client_id,
+          agent_id: user.agent_id,
         },
       };
     } catch (error) {
@@ -167,6 +169,7 @@ class AuthService {
       username: user.username,
       role: user.role,
       client_id: user.client_id,
+      agent_id: user.agent_id,
     };
   }
 

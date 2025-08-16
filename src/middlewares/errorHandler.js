@@ -1,22 +1,4 @@
 // src/middlewares/errorHandler.js
-const errorHandler = (err, req, res, next) => {
-  const statusCode = err.statusCode || 500;
-
-  // Always log error details on the server for debugging
-  console.error(err);
-
-  // Never expose stack trace or sensitive info to the client
-  res.status(statusCode).json({
-    status: "error",
-    statusCode,
-    message:
-      statusCode === 500
-        ? "Internal Server Error"
-        : err.message || "An error occurred",
-  });
-};
-
-// Custom error class
 class AppError extends Error {
   constructor(message, statusCode) {
     super(message);
@@ -24,5 +6,24 @@ class AppError extends Error {
     Error.captureStackTrace(this, this.constructor);
   }
 }
+
+const errorHandler = (err, req, res, next) => {
+  const statusCode = err.statusCode || 500;
+
+  // Always log error details on the server for debugging
+  console.error(err);
+
+  // Never expose stack trace or sensitive info to the client
+  let message = "Internal Server Error";
+  if (statusCode !== 500 && err.message) {
+    message = err.message;
+  }
+
+  res.status(statusCode).json({
+    status: "error",
+    statusCode,
+    message,
+  });
+};
 
 module.exports = { errorHandler, AppError };

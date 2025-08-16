@@ -10,7 +10,7 @@ const adminBillingRoutes = require("./adminBillingRoutes");
 const clientDashboardRoutes = require("./clientDashboardRoutes");
 const logsRoutes = require("./logsRoutes");
 const adminDashboardRoutes = require("./adminDashboardRoutes");
-
+const transactionRoutes = require("./transactionRoutes");
 const router = express.Router();
 
 // API routes
@@ -24,6 +24,8 @@ router.use("/admin/client-billing", adminBillingRoutes);
 router.use("/client/dashboard", clientDashboardRoutes);
 router.use("/logs", logsRoutes);
 router.use("/admin/dashboard", adminDashboardRoutes);
+router.use("/transactions", transactionRoutes);
+
 // Add additional routes here as they're implemented
 
 module.exports = router;
