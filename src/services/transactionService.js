@@ -13,7 +13,7 @@ exports.logTransaction = async (data, transaction) => {
     amount,
     currency,
     status,
-    user_id,
+    player_id,
     roundId,
     metadata,
     aggregatorName,
@@ -27,7 +27,7 @@ exports.logTransaction = async (data, transaction) => {
     !amount ||
     !currency ||
     !status ||
-    !user_id ||
+    !player_id ||
     !aggregatorName ||
     !rawPayload
   ) {
@@ -43,7 +43,7 @@ exports.logTransaction = async (data, transaction) => {
       amount,
       currency,
       status,
-      user_id,
+      player_id,
       roundId,
       metadata,
     },
@@ -73,8 +73,8 @@ exports.getTransactions = async (page = 1, limit = 20, filters = {}) => {
   if (filters.agentId) {
     where.agentId = filters.agentId;
   }
-  if (filters.userId) {
-    where.user_id = filters.userId;
+  if (filters.playerId) {
+    where.player_id = filters.playerId;
   }
   if (filters.vendorId) {
     where.vendorId = filters.vendorId;
@@ -171,7 +171,7 @@ exports.getAggregatedTransactions = async (
 
   if (filters.clientId) where.client_id = filters.clientId;
   if (filters.agentId) where.agent_id = filters.agentId;
-  if (filters.userId) where.user_id = filters.userId;
+  if (filters.playerId) where.player_id = filters.playerId;
   if (filters.vendorId) where.vendor_id = filters.vendorId;
   if (filters.gameId) where.game_id = filters.gameId;
   if (filters.startDate && filters.endDate) {
@@ -208,7 +208,7 @@ exports.getAggregatedTransactions = async (
           "totalRollbacks",
         ],
         [fn("COUNT", col("id")), "rounds"],
-        [fn("COUNT", fn("DISTINCT", col("user_id"))), "uniquePlayers"],
+        [fn("COUNT", fn("DISTINCT", col("player_id"))), "uniquePlayers"],
       ];
       order = [[fn("DATE", col("created_at")), "DESC"]];
       break;
@@ -234,7 +234,7 @@ exports.getAggregatedTransactions = async (
           "totalRollbacks",
         ],
         [fn("COUNT", col("id")), "rounds"],
-        [fn("COUNT", fn("DISTINCT", col("user_id"))), "uniquePlayers"],
+        [fn("COUNT", fn("DISTINCT", col("player_id"))), "uniquePlayers"],
       ];
       order = [
         [
@@ -264,7 +264,7 @@ exports.getAggregatedTransactions = async (
           "totalRollbacks",
         ],
         [fn("COUNT", col("id")), "rounds"],
-        [fn("COUNT", fn("DISTINCT", col("user_id"))), "uniquePlayers"],
+        [fn("COUNT", fn("DISTINCT", col("player_id"))), "uniquePlayers"],
       ];
       order = [
         [
@@ -274,9 +274,9 @@ exports.getAggregatedTransactions = async (
       ];
       break;
     case "player":
-      group = ["userId", "currency"];
+      group = ["playerId", "currency"];
       attributes = [
-        "userId",
+        "playerId",
         "currency",
         [
           fn("SUM", literal(`CASE WHEN type = 'bet' THEN amount ELSE 0 END`)),

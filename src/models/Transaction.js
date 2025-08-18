@@ -1,6 +1,6 @@
 "use strict";
 const { DataTypes } = require("sequelize");
-// TODO: CHANGE USERID TO PLAYERID
+// CHANGED: USERID TO PLAYERID, NO ASSOCIATION/FOREIGN KEY
 module.exports = (sequelize) => {
   const Transaction = sequelize.define(
     "Transaction",
@@ -35,10 +35,11 @@ module.exports = (sequelize) => {
         type: DataTypes.ENUM("pending", "success", "failed", "rolled_back"),
         allowNull: false,
       },
-      userId: {
+      playerId: {
         type: DataTypes.INTEGER,
-        field: "user_id",
+        field: "player_id",
         allowNull: false,
+        // No association/foreign key, playerId is external
       },
       clientId: {
         type: DataTypes.INTEGER,

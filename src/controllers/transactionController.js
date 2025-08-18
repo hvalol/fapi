@@ -1,5 +1,6 @@
 const { sequelize } = require("../models");
 const transactionService = require("../services/transactionService");
+const { toCamel } = require("../utils/caseConverter");
 // TODO: CHANGE USER_ID TO PLAYER_ID
 exports.logTransaction = async (req, res, next) => {
   const t = await sequelize.transaction();
@@ -25,8 +26,8 @@ exports.getTransactions = async (req, res, next) => {
     if (req.query.agent_id) {
       filters.agentId = parseInt(req.query.agent_id);
     }
-    if (req.query.user_id) {
-      filters.userId = parseInt(req.query.user_id);
+    if (req.query.player_id) {
+      filters.playerId = parseInt(req.query.player_id);
     }
     if (req.query.vendor_id) {
       filters.vendorId = parseInt(req.query.vendor_id);
@@ -52,7 +53,7 @@ exports.getTransactions = async (req, res, next) => {
       total: count,
       page,
       pageCount: Math.ceil(count / limit),
-      transactions: rows,
+      transactions: toCamel(rows),
     });
   } catch (error) {
     next(error);
@@ -64,7 +65,7 @@ exports.getTransactionById = async (req, res, next) => {
     const { id } = req.params;
     const transaction = await transactionService.getTransactionById(id);
 
-    return res.json({ success: true, transaction });
+  return res.json({ success: true, transaction: toCamel(transaction) });
   } catch (error) {
     next(error);
   }
@@ -79,7 +80,7 @@ exports.getAggregatedTransactions = async (req, res, next) => {
 
     if (req.query.client_id) filters.clientId = parseInt(req.query.client_id);
     if (req.query.agent_id) filters.agentId = parseInt(req.query.agent_id);
-    if (req.query.user_id) filters.userId = parseInt(req.query.user_id);
+    if (req.query.player_id) filters.playerId = parseInt(req.query.player_id);
     if (req.query.vendor_id) filters.vendorId = parseInt(req.query.vendor_id);
     if (req.query.game_id) filters.gameId = parseInt(req.query.game_id);
     if (req.query.start_date)
@@ -95,7 +96,7 @@ exports.getAggregatedTransactions = async (req, res, next) => {
 
     return res.json({
       success: true,
-      ...result,
+      ...toCamel(result),
     });
   } catch (error) {
     next(error);
