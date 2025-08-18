@@ -65,7 +65,7 @@ exports.getTransactionById = async (req, res, next) => {
     const { id } = req.params;
     const transaction = await transactionService.getTransactionById(id);
 
-  return res.json({ success: true, transaction: toCamel(transaction) });
+    return res.json({ success: true, transaction: toCamel(transaction) });
   } catch (error) {
     next(error);
   }
