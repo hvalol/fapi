@@ -69,7 +69,7 @@ class ClientBillingService {
           },
           {
             model: ClientTransaction,
-            as: "transactions",
+            as: "clientTransactions",
             required: false,
             limit: 50,
             order: [["created_at", "DESC"]],
@@ -115,7 +115,7 @@ class ClientBillingService {
           },
           {
             model: ClientTransaction,
-            as: "transactions",
+            as: "clientTransactions",
             required: false,
             order: [["created_at", "DESC"]],
           },
