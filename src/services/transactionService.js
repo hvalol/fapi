@@ -100,11 +100,15 @@ exports.getTransactions = async (page = 1, limit = 20, filters = {}) => {
     };
   }
 
+  // Log the final where clause
+  console.log("Sequelize where clause:", where);
+
   const result = await Transaction.findAndCountAll({
     where,
     offset,
     limit,
     order: [["created_at", "DESC"]],
+    logging: (sql) => console.log("Sequelize SQL:", sql),
   });
 
   // Collect unique agentIds and clientIds

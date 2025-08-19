@@ -20,6 +20,9 @@ exports.getTransactions = async (req, res, next) => {
     const limit = parseInt(req.query.limit) || 20;
     const filters = {};
 
+    // Log incoming query params
+    console.log("Incoming query params:", req.query);
+
     if (req.query.client_id) {
       filters.clientId = parseInt(req.query.client_id);
     }
@@ -41,6 +44,9 @@ exports.getTransactions = async (req, res, next) => {
     if (req.query.end_date) {
       filters.endDate = new Date(req.query.end_date);
     }
+
+    // Log filters object
+    console.log("Filters used for query:", filters);
 
     const { count, rows } = await transactionService.getTransactions(
       page,

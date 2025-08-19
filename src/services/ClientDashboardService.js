@@ -8,6 +8,238 @@ const zenithService = require("./zenithService");
  */
 class ClientDashboardService {
   /**
+   * Get transaction analytics for dashboard: by game, by vendor, summary
+   * @param {number} clientId
+   * @returns {Object} { byGame, byVendor, summary }
+   */
+  async getTransactionAnalytics(clientId) {
+    const { Transaction, ZenithGame, ZenithVendor } = models;
+    // By Game (group by game, vendor, currency)
+    const byGameRaw = await Transaction.findAll({
+      where: { client_id: clientId },
+      attributes: [
+        "gameId",
+        "vendorId",
+        [
+          models.sequelize.fn(
+            "SUM",
+            models.sequelize.literal(
+              `CASE WHEN type = 'bet' THEN amount ELSE 0 END`
+            )
+          ),
+          "totalBets",
+        ],
+        [
+          models.sequelize.fn(
+            "SUM",
+            models.sequelize.literal(
+              `CASE WHEN type = 'win' THEN amount ELSE 0 END`
+            )
+          ),
+          "totalWins",
+        ],
+        [
+          models.sequelize.fn(
+            "SUM",
+            models.sequelize.literal(
+              `CASE WHEN type = 'rollback' THEN amount ELSE 0 END`
+            )
+          ),
+          "totalRollbacks",
+        ],
+        "currency",
+      ],
+      group: ["gameId", "vendorId", "currency"],
+      raw: true,
+    });
+
+    // By Vendor (group by vendor, currency)
+    const byVendorRaw = await Transaction.findAll({
+      where: { client_id: clientId },
+      attributes: [
+        "vendorId",
+        [
+          models.sequelize.fn(
+            "SUM",
+            models.sequelize.literal(
+              `CASE WHEN type = 'bet' THEN amount ELSE 0 END`
+            )
+          ),
+          "totalBets",
+        ],
+        [
+          models.sequelize.fn(
+            "SUM",
+            models.sequelize.literal(
+              `CASE WHEN type = 'win' THEN amount ELSE 0 END`
+            )
+          ),
+          "totalWins",
+        ],
+        [
+          models.sequelize.fn(
+            "SUM",
+            models.sequelize.literal(
+              `CASE WHEN type = 'rollback' THEN amount ELSE 0 END`
+            )
+          ),
+          "totalRollbacks",
+        ],
+        "currency",
+      ],
+      group: ["vendorId", "currency"],
+      raw: true,
+    });
+
+    // Summary (group by currency)
+    const summaryRaw = await Transaction.findAll({
+      where: { client_id: clientId },
+      attributes: [
+        [
+          models.sequelize.fn(
+            "SUM",
+            models.sequelize.literal(
+              `CASE WHEN type = 'bet' THEN amount ELSE 0 END`
+            )
+          ),
+          "totalBets",
+        ],
+        [
+          models.sequelize.fn(
+            "SUM",
+            models.sequelize.literal(
+              `CASE WHEN type = 'win' THEN amount ELSE 0 END`
+            )
+          ),
+          "totalWins",
+        ],
+        [
+          models.sequelize.fn(
+            "SUM",
+            models.sequelize.literal(
+              `CASE WHEN type = 'rollback' THEN amount ELSE 0 END`
+            )
+          ),
+          "totalRollbacks",
+        ],
+        "currency",
+      ],
+      group: ["currency"],
+      raw: true,
+    });
+
+    // Build lookup maps for game and vendor names
+    let gameMap = {},
+      vendorMap = {};
+    const gameIds = [
+      ...new Set(byGameRaw.map((r) => r.gameId).filter(Boolean)),
+    ];
+    const vendorIds = [
+      ...new Set([
+        ...byGameRaw.map((r) => r.vendorId).filter(Boolean),
+        ...byVendorRaw.map((r) => r.vendorId).filter(Boolean),
+      ]),
+    ];
+    if (gameIds.length) {
+      const games = await ZenithGame.findAll({
+        where: { id: gameIds },
+        raw: true,
+      });
+      games.forEach((g) => {
+        gameMap[g.id] = {
+          name: g.gameName || g.name || `Game ${g.id}`,
+          vendorId: g.vendorId,
+        };
+      });
+    }
+    if (vendorIds.length) {
+      const vendors = await ZenithVendor.findAll({
+        where: { id: vendorIds },
+        raw: true,
+      });
+      vendors.forEach((v) => {
+        vendorMap[v.id] = v.name || `Vendor ${v.id}`;
+      });
+    }
+
+    // Group by currency
+    const analyticsByCurrency = {};
+    // byGame
+    byGameRaw.forEach((r) => {
+      const currency = r.currency || "USD";
+      if (!analyticsByCurrency[currency])
+        analyticsByCurrency[currency] = {
+          byGame: [],
+          byVendor: [],
+          summary: {},
+        };
+      analyticsByCurrency[currency].byGame.push({
+        gameId: r.gameId,
+        gameName: gameMap[r.gameId]?.name || `Game ${r.gameId}`,
+        vendorId: r.vendorId,
+        vendorName:
+          vendorMap[r.vendorId] ||
+          (gameMap[r.gameId]?.vendorId
+            ? vendorMap[gameMap[r.gameId].vendorId]
+            : null) ||
+          null,
+        totalBets: Number(r.totalBets || 0),
+        totalWins: Number(r.totalWins || 0),
+        totalRollbacks: Number(r.totalRollbacks || 0),
+        net:
+          Number(r.totalBets || 0) -
+          Number(r.totalWins || 0) -
+          Number(r.totalRollbacks || 0),
+        ggr: Number(r.totalBets || 0) - Number(r.totalWins || 0),
+      });
+    });
+    // byVendor
+    byVendorRaw.forEach((r) => {
+      const currency = r.currency || "USD";
+      if (!analyticsByCurrency[currency])
+        analyticsByCurrency[currency] = {
+          byGame: [],
+          byVendor: [],
+          summary: {},
+        };
+      analyticsByCurrency[currency].byVendor.push({
+        vendorId: r.vendorId,
+        vendorName: vendorMap[r.vendorId] || `Vendor ${r.vendorId}`,
+        totalBets: Number(r.totalBets || 0),
+        totalWins: Number(r.totalWins || 0),
+        totalRollbacks: Number(r.totalRollbacks || 0),
+        net:
+          Number(r.totalBets || 0) -
+          Number(r.totalWins || 0) -
+          Number(r.totalRollbacks || 0),
+        ggr: Number(r.totalBets || 0) - Number(r.totalWins || 0),
+      });
+    });
+    // summary
+    summaryRaw.forEach((r) => {
+      const currency = r.currency || "USD";
+      if (!analyticsByCurrency[currency])
+        analyticsByCurrency[currency] = {
+          byGame: [],
+          byVendor: [],
+          summary: {},
+        };
+      analyticsByCurrency[currency].summary = {
+        totalBets: Number(r.totalBets || 0),
+        totalWins: Number(r.totalWins || 0),
+        totalRollbacks: Number(r.totalRollbacks || 0),
+        net:
+          Number(r.totalBets || 0) -
+          Number(r.totalWins || 0) -
+          Number(r.totalRollbacks || 0),
+        ggr: Number(r.totalBets || 0) - Number(r.totalWins || 0),
+        currency,
+      };
+    });
+
+    return analyticsByCurrency;
+  }
+  /**
    * Get dashboard summary data for a client
    * @param {number} clientId - Client ID
    * @returns {Object} Dashboard summary data
@@ -102,149 +334,31 @@ class ClientDashboardService {
         where: { client_id: clientId },
       });
 
+      // Calculate outstanding balance
       if (clientTransactions && clientTransactions.length > 0) {
-        // Calculate outstanding balance from transactions
         outstandingBalance = clientTransactions.reduce((total, tx) => {
-          // Convert the amount to a number to ensure proper calculation
           const amount = parseFloat(tx.amount);
-
-          // If it's a payment, subtract from outstanding balance
           if (tx.type === "Payment") {
             return total - amount;
-          }
-          // Otherwise it's a charge, add to outstanding balance
-          else {
+          } else {
             return total + Math.abs(amount);
           }
         }, 0);
       }
 
-      // Check for outstanding balance and unpaid billings
-      if (outstandingBalance > 0) {
+      // Check for unpaid billings
+      const unpaidBilling = await models.ClientBilling.findOne({
+        where: { client_id: clientId, status: "Unpaid" },
+        order: [["due_date", "ASC"]],
+      });
+      if (unpaidBilling) {
         hasUnpaidBilling = true;
-
-        // Find the earliest due billing to display in message
-        const clientBillings = await models.ClientBilling.findAll({
-          where: {
-            client_id: clientId,
-            status: "Unpaid",
-          },
-          order: [["due_date", "ASC"]],
-        });
-
-        if (clientBillings && clientBillings.length > 0) {
-          // Get the earliest due date for message
-          const earliestBilling = clientBillings[0];
-          const dueDate = new Date(earliestBilling.due_date);
-          // Format date as MM/DD/YYYY
-          const formattedDate = dueDate.toLocaleDateString();
-          billingMessage = `You have unpaid billings due on ${formattedDate}`;
-        } else {
-          billingMessage = "You have outstanding balance that requires payment";
-        }
+        billingMessage = `Outstanding invoice due on ${unpaidBilling.due_date}`;
       }
 
-      return {
-        outstandingBalance,
-        hasUnpaidBilling,
-        billingMessage,
-      };
+      return { outstandingBalance, hasUnpaidBilling, billingMessage };
     } catch (error) {
       console.error("Error in getClientBillingInfo service:", error);
-      throw error;
-    }
-  }
-
-  /**
-   * Get games and vendors data for client dashboard
-   * @param {number} clientId - Client ID
-   * @param {Object} options - { filters, page, pageSize }
-   * @returns {Object} Games and vendors data
-   */
-  async getGamesAndVendors(clientId, options = {}) {
-    try {
-      // Find the agent for this client (assuming one agent per client for dashboard)
-      const agent = await models.Agent.findOne({
-        where: { client_id: clientId, status: "active" },
-        include: [{ model: models.AgentSettings, as: "settings" }],
-      });
-      if (!agent || !agent.settings) {
-        return { games: [], vendors: [], totalGames: 0 };
-      }
-      const agentId = agent.id;
-
-      const filters = options.filters || {};
-      const page = options.page || 1;
-      const pageSize = options.pageSize || 10;
-
-      // Fetch all vendors (no limit, all pages)
-      let allVendors = [];
-      let vPage = 1;
-      let hasMore = true;
-      while (hasMore) {
-        const { vendors } = await zenithService.getAllVendors(
-          filters.vendor || {},
-          vPage,
-          1000,
-          agentId,
-          false
-        );
-        allVendors = allVendors.concat(vendors);
-        hasMore = vendors.length === 1000;
-        vPage += 1;
-      }
-
-      // Fetch paginated games for dashboard (filtered by allowed vendors)
-      const { games, total } = await zenithService.getDashboardGames(
-        agentId,
-        filters.game || {},
-        page,
-        pageSize
-      );
-
-      // Fetch games count per vendor
-      const gamesCountPerVendor = await zenithService.getGamesCountPerVendor(
-        agentId
-      );
-
-      // Create a map of vendorId to games for quick lookup
-      const gamesByVendorId = {};
-      games.forEach((game) => {
-        const vendorId = game.vendor_id || (game.vendor && game.vendor.id);
-        if (!vendorId) return;
-        if (!gamesByVendorId[vendorId]) gamesByVendorId[vendorId] = [];
-        gamesByVendorId[vendorId].push(game);
-      });
-
-      // Format games data for frontend
-      const formattedGames = games.map((game) => ({
-        id: game.id,
-        name: game.gameName,
-        vendor: game.vendor ? game.vendor.name : "Unknown",
-        category: game.categoryCode || "Uncategorized",
-        popular: false,
-        status: game.is_disabled ? "inactive" : "active",
-      }));
-
-      // Format vendors data for frontend, with correct gamesCount
-      const formattedVendors = allVendors.map((vendor) => ({
-        id: vendor.id,
-        name: vendor.name,
-        gamesCount: gamesCountPerVendor[vendor.id] || 0,
-        status: vendor.is_disabled ? "inactive" : "active",
-        categories:
-          Array.isArray(vendor.categories) && vendor.categories.length > 0
-            ? vendor.categories
-            : ["General"],
-      }));
-
-      return {
-        games: formattedGames,
-        vendors: formattedVendors,
-        totalGames: total,
-      };
-    } catch (error) {
-      console.error("Error in getGamesAndVendors service:", error);
       throw error;
     }
   }

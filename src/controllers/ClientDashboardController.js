@@ -100,14 +100,22 @@ exports.getBillingData = async (req, res, next) => {
 };
 
 /**
- * Placeholder for transaction data (future implementation)
+ * Get transaction analytics for dashboard: by game, by vendor, summary
  */
 exports.getTransactions = async (req, res, next) => {
   try {
+    const clientId = req.user.client_id;
+    if (!clientId) {
+      return next(new AppError("No client associated with this user", 400));
+    }
+
+    const analytics = await clientDashboardService.getTransactionAnalytics(
+      clientId
+    );
+
     res.status(200).json({
       status: "success",
-      message: "Feature will be available in a future update",
-      data: {},
+      data: analytics,
     });
   } catch (error) {
     next(error);
