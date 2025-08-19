@@ -18,6 +18,8 @@ exports.logTransaction = async (data, transaction) => {
     metadata,
     aggregatorName,
     rawPayload,
+    balanceBefore,
+    balanceAfter,
   } = data;
 
   // Basic validation example (expand as needed)
@@ -46,6 +48,8 @@ exports.logTransaction = async (data, transaction) => {
       player_id,
       roundId,
       metadata,
+      balanceBefore,
+      balanceAfter,
     },
     { transaction }
   );

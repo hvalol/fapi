@@ -66,6 +66,16 @@ module.exports = (sequelize) => {
         field: "round_id",
         allowNull: true,
       },
+      balanceBefore: {
+        type: DataTypes.DECIMAL(18, 2),
+        field: "balance_before",
+        allowNull: true,
+      },
+      balanceAfter: {
+        type: DataTypes.DECIMAL(18, 2),
+        field: "balance_after",
+        allowNull: true,
+      },
       metadata: {
         type: DataTypes.JSON,
         allowNull: true,
