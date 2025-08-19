@@ -11,6 +11,8 @@ const clientDashboardRoutes = require("./clientDashboardRoutes");
 const logsRoutes = require("./logsRoutes");
 const adminDashboardRoutes = require("./adminDashboardRoutes");
 const transactionRoutes = require("./transactionRoutes");
+
+const walletRoutes = require("./walletRoutes");
 const router = express.Router();
 
 const publicApiRoutes = require("./publicApi");
@@ -26,6 +28,8 @@ router.use("/client/dashboard", clientDashboardRoutes);
 router.use("/logs", logsRoutes);
 router.use("/admin/dashboard", adminDashboardRoutes);
 router.use("/transactions", transactionRoutes);
+
+router.use("/wallet", walletRoutes);
 router.use("/public", publicApiRoutes);
 
 // Add additional routes here as they're implemented

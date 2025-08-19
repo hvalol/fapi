@@ -18,9 +18,27 @@ const AdminLogsArchive = require("./AdminLogsArchive");
 const ClientLogsArchive = require("./ClientLogsArchive");
 const AgentVendorSetting = require("./AgentVendorSetting");
 const AgentGameSetting = require("./AgentGameSetting");
+
 const Transaction = require("./Transaction")(sequelize);
 const TransactionAudit = require("./TransactionAudit")(sequelize);
+const WalletTransaction = require("./WalletTransaction")(sequelize);
 
+const AgentWallet = require("./AgentWallet")(sequelize);
+// AgentWallet Associations
+Agent.hasMany(AgentWallet, { foreignKey: "agent_id", as: "wallets" });
+AgentWallet.belongsTo(Agent, { foreignKey: "agent_id", as: "agent" });
+Client.hasMany(AgentWallet, { foreignKey: "client_id", as: "wallets" });
+AgentWallet.belongsTo(Client, { foreignKey: "client_id", as: "client" });
+
+// WalletTransaction Associations
+AgentWallet.hasMany(WalletTransaction, {
+  foreignKey: "wallet_id",
+  as: "transactions",
+});
+WalletTransaction.belongsTo(AgentWallet, {
+  foreignKey: "wallet_id",
+  as: "wallet",
+});
 // Client-User Association
 Client.hasMany(User, { foreignKey: "client_id", as: "users" });
 User.belongsTo(Client, { foreignKey: "client_id", as: "client" });
@@ -192,4 +210,6 @@ module.exports = {
   AgentGameSetting,
   Transaction,
   TransactionAudit,
+  AgentWallet,
+  WalletTransaction,
 };
