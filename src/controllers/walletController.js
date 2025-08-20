@@ -120,11 +120,22 @@ module.exports = {
   async getTransactions(req, res, next) {
     try {
       const { agentId, clientId, walletType, limit, offset } = req.query;
-      if (!agentId || !walletType)
-        return next(new AppError("agentId and walletType are required", 400));
+      if (!walletType || (!agentId && !clientId))
+        return next(
+          new AppError(
+            "walletType and at least one of agentId or clientId are required",
+            400
+          )
+        );
       const transactions = await WalletService.getTransactions({
-        agentId,
-        clientId,
+        agentId:
+          agentId !== undefined && agentId !== null && agentId !== ""
+            ? agentId
+            : undefined,
+        clientId:
+          clientId !== undefined && clientId !== null && clientId !== ""
+            ? clientId
+            : undefined,
         walletType,
         limit: Number(limit) || 20,
         offset: Number(offset) || 0,
