@@ -24,6 +24,12 @@ module.exports = (sequelize) => {
         type: DataTypes.ENUM("seamless", "transfer", "holdem"),
         allowNull: false,
       },
+      topup_rate: {
+        type: DataTypes.DECIMAL(10, 2),
+        allowNull: false,
+        defaultValue: 1.0, // or whatever default makes sense
+        comment: "Topup rate for this wallet type",
+      },
       balance: {
         type: DataTypes.DECIMAL(18, 6),
         allowNull: false,

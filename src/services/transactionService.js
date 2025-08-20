@@ -4,7 +4,6 @@ const agentService = require("./agentService");
 const clientService = require("./clientService");
 const { fn, col, literal, Op } = require("sequelize");
 
-// TODO: CHANGE user_id TO PLAYERID
 exports.logTransaction = async (data, transaction) => {
   const {
     externalTransactionId,

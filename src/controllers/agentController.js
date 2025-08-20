@@ -19,8 +19,13 @@ exports.getAllAgents = async (req, res, next) => {
     if (req.user.role === "ClientAdmin") {
       filters.client_id = req.user.client_id;
     }
+    let options = {};
 
-    const agents = await agentService.getAllAgents(filters);
+    if (req.user.role === "Admin") {
+      options.includeApiSecret = true;
+    }
+
+    const agents = await agentService.getAllAgents(filters, options);
 
     res.json({
       status: "success",
@@ -38,6 +43,7 @@ exports.getAgentById = async (req, res, next) => {
   try {
     const options = {
       includeChildren: req.query.includeChildren === "true",
+      includeApiSecret: req.user.role === "Admin",
     };
 
     const agent = await agentService.getAgentById(req.params.id, options);
@@ -86,6 +92,7 @@ exports.createAgent = async (req, res, next) => {
       user_id: req.body.user_id,
       max_agents: req.body.max_agents,
       max_level: req.body.max_level,
+      wallets: req.body.wallets || [],
     };
 
     // If user is ClientAdmin, restrict to their client
@@ -149,6 +156,7 @@ exports.updateAgent = async (req, res, next) => {
       user_id: req.body.user_id,
       max_agents: req.body.max_agents,
       max_level: req.body.max_level,
+      wallets: req.body.wallets || [],
     };
 
     const updatedAgent = await agentService.updateAgent(

@@ -1,7 +1,6 @@
 const { sequelize } = require("../models");
 const transactionService = require("../services/transactionService");
 const { toCamel } = require("../utils/caseConverter");
-// TODO: CHANGE USER_ID TO PLAYER_ID
 exports.logTransaction = async (req, res, next) => {
   const t = await sequelize.transaction();
   try {

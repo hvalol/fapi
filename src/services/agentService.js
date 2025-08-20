@@ -20,14 +20,21 @@ class AgentService {
    * @param {Object} filters - Filters to apply
    * @returns {Array} List of agents
    */
-  async getAllAgents(filters = {}) {
+  async getAllAgents(filters = {}, options = {}) {
     const query = {};
     const include = [
       { model: AgentProfile, as: "profile" },
       {
         model: AgentSettings,
         as: "settings",
-        attributes: { exclude: ["api_secret"] },
+        attributes: options.includeApiSecret
+          ? undefined
+          : { exclude: ["api_secret"] },
+      },
+      {
+        model: require("../models").AgentWallet,
+        as: "wallets",
+        attributes: ["id", "wallet_type", "currency", "balance", "topup_rate"],
       },
     ];
 
@@ -143,11 +150,18 @@ class AgentService {
       {
         model: AgentSettings,
         as: "settings",
-        attributes: { exclude: ["api_secret"] },
+        attributes: options.includeApiSecret
+          ? undefined
+          : { exclude: ["api_secret"] },
       },
       { model: AgentCommission, as: "commissions" },
       { model: Client, as: "client", attributes: ["id", "name"] },
       { model: User, as: "user", attributes: ["id", "username"] },
+      {
+        model: require("../models").AgentWallet,
+        as: "wallets",
+        attributes: ["id", "wallet_type", "currency", "balance", "topup_rate"],
+      },
     ];
 
     // Include parent agent with its basic profile
@@ -219,7 +233,9 @@ class AgentService {
       user_id,
       max_agents,
       max_level,
+      wallets = [],
     } = agentData;
+    const AgentWallet = require("../models").AgentWallet;
 
     // Validate client exists
     const client = await Client.findByPk(client_id);
@@ -427,6 +443,22 @@ class AgentService {
 
       await transaction.commit();
 
+      // Create agent wallets if provided
+      if (wallets && Array.isArray(wallets)) {
+        for (const wallet of wallets) {
+          await AgentWallet.create(
+            {
+              agent_id: agent.id,
+              client_id: client_id,
+              wallet_type: wallet.wallet_type,
+              currency: wallet.currency,
+              balance: wallet.balance || 0,
+              topup_rate: wallet.topup_rate || 1.0,
+            },
+            { transaction }
+          );
+        }
+      }
       // Return created agent with associations
       return this.getAgentById(agent.id);
     } catch (error) {
@@ -465,7 +497,9 @@ class AgentService {
       user_id,
       max_agents,
       max_level,
+      wallets = [],
     } = agentData;
+    const AgentWallet = require("../models").AgentWallet;
 
     // Check if code is being changed and if it's unique
     if (code && code !== agent.code) {
@@ -543,6 +577,45 @@ class AgentService {
 
       await agent.save({ transaction });
 
+      // Update or create agent wallets if provided
+      if (wallets && Array.isArray(wallets)) {
+        for (const wallet of wallets) {
+          // Find existing wallet by type and currency
+          let agentWallet = await AgentWallet.findOne({
+            where: {
+              agent_id: agent.id,
+              wallet_type: wallet.wallet_type,
+              currency: wallet.currency,
+            },
+            transaction,
+          });
+          if (agentWallet) {
+            // Update existing wallet
+            agentWallet.balance =
+              wallet.balance !== undefined
+                ? wallet.balance
+                : agentWallet.balance;
+            agentWallet.topup_rate =
+              wallet.topup_rate !== undefined
+                ? wallet.topup_rate
+                : agentWallet.topup_rate;
+            await agentWallet.save({ transaction });
+          } else {
+            // Create new wallet
+            await AgentWallet.create(
+              {
+                agent_id: agent.id,
+                client_id: agent.client_id,
+                wallet_type: wallet.wallet_type,
+                currency: wallet.currency,
+                balance: wallet.balance || 0,
+                topup_rate: wallet.topup_rate || 1.0,
+              },
+              { transaction }
+            );
+          }
+        }
+      }
       // Update profile if provided - simplified for updated model
       if (profile) {
         if (agent.profile) {
