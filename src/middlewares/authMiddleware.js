@@ -15,13 +15,26 @@ const authenticate = async (req, res, next) => {
     const token = authHeader.split(" ")[1];
 
     // Verify token
-    jwt.verify(token, jwtConfig.secret, (err, decoded) => {
+    jwt.verify(token, jwtConfig.secret, async (err, decoded) => {
       if (err) {
         return next(new AppError("Invalid or expired token", 401));
       }
 
       // Attach user info to request
       req.user = decoded;
+
+      // If agent_id is present, fetch and attach the full agent record
+      if (decoded.agent_id) {
+        try {
+          const Agent = require("../models/Agent");
+          const agent = await Agent.findByPk(decoded.agent_id);
+          if (agent) {
+            req.user.agent = agent.toJSON();
+          }
+        } catch (agentErr) {
+          // If agent fetch fails, continue without agent context
+        }
+      }
       next();
     });
   } catch (error) {

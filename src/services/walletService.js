@@ -7,7 +7,15 @@ const { AppError } = require("../middlewares/errorHandler");
  */
 class WalletService {
   /**
-   * Top-up wallet (dev/testing only, just calls credit)
+   * Top-up wallet: Only master/root agent can top up sub-agents. The topup amount must not exceed the balance of the master/root agent.
+   * @param {Object} params
+   * @param {number} agentId - The sub-agent to top up
+   * @param {number} clientId
+   * @param {string} walletType
+   * @param {number} amount
+   * @param {string} reference
+   * @param {object} metadata
+   * @param {object} user - The user performing the topup (must be master/root agent)
    */
   async topupWallet({
     agentId,
@@ -16,28 +24,95 @@ class WalletService {
     amount,
     reference,
     metadata,
+    user,
   }) {
-    // Try to find the wallet first
-    let wallet = await AgentWallet.findOne({
+    // Validate: user must be a master/root agent and can only top up sub-agents
+    if (!user || !user.agent_id) {
+      throw new AppError("Only agents can perform top-up", 403);
+    }
+    if (Number(agentId) === Number(user.agent_id)) {
+      throw new AppError("You cannot top up your own agent wallet", 403);
+    }
+    // Check that the agentId is a sub-agent of the user.agent_id
+    const { Agent } = require("../models");
+    const subAgent = await Agent.findByPk(agentId);
+    if (!subAgent) {
+      throw new AppError("Sub-agent not found", 404);
+    }
+    if (subAgent.parent_id !== user.agent_id) {
+      throw new AppError("You can only top up your direct sub-agents", 403);
+    }
+    // Check master/root agent's wallet balance
+    let masterWallet = await AgentWallet.findOne({
+      where: {
+        agent_id: user.agent_id,
+        client_id: clientId,
+        wallet_type: walletType,
+      },
+    });
+    if (!masterWallet) {
+      throw new AppError("Your (master agent) wallet not found", 404);
+    }
+    if (Number(masterWallet.balance) < Number(amount)) {
+      throw new AppError(
+        "Insufficient balance in your (master agent) wallet",
+        400
+      );
+    }
+    // Try to find/create the sub-agent's wallet
+    let subWallet = await AgentWallet.findOne({
       where: {
         agent_id: agentId,
         client_id: clientId,
         wallet_type: walletType,
       },
     });
-    if (!wallet) {
+    if (!subWallet) {
       // Default currency for dev/testing; adjust as needed
       const currency = "USD";
-      await this.createWallet({ agentId, clientId, currency, walletType });
+      subWallet = await this.createWallet({
+        agentId,
+        clientId,
+        currency,
+        walletType,
+      });
     }
-    // Now credit the wallet
-    return this.credit({
-      agentId,
-      clientId,
-      walletType,
-      amount,
-      reference,
-      metadata,
+    // Perform the transfer atomically
+    return sequelize.transaction(async (t) => {
+      // Deduct from master/root agent
+      masterWallet.balance = Number(masterWallet.balance) - Number(amount);
+      await masterWallet.save({ transaction: t });
+      // Credit to sub-agent
+      subWallet.balance = Number(subWallet.balance) + Number(amount);
+      await subWallet.save({ transaction: t });
+      // Log transactions for both wallets
+      await WalletTransaction.create(
+        {
+          wallet_id: masterWallet.id,
+          transaction_type: "transfer_out",
+          amount,
+          reference:
+            reference ||
+            `Top-up to sub-agent ${subAgent.name} (${subAgent.code})`,
+          metadata: { ...metadata, to_agent_id: agentId },
+          balance_before: Number(masterWallet.balance) + Number(amount),
+          balance_after: masterWallet.balance,
+        },
+        { transaction: t }
+      );
+      await WalletTransaction.create(
+        {
+          wallet_id: subWallet.id,
+          transaction_type: "transfer_in",
+          amount,
+          reference: reference || `Top-up from master agent ${user.agent_id}`,
+          metadata: { ...metadata, from_agent_id: user.agent_id },
+          balance_before: Number(subWallet.balance) - Number(amount),
+          balance_after: subWallet.balance,
+        },
+        { transaction: t }
+      );
+      return subWallet;
     });
   }
   /**

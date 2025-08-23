@@ -8,6 +8,7 @@ module.exports = {
     try {
       const { agentId, clientId, walletType, amount, reference, metadata } =
         req.body;
+      const user = req.user; // Assumes authentication middleware sets req.user
       if (
         !agentId ||
         !clientId ||
@@ -21,8 +22,12 @@ module.exports = {
             400
           )
         );
+      console.log("requser", req.body);
       if (typeof amount !== "number" || isNaN(amount) || amount <= 0)
         return next(new AppError("amount must be a positive number", 400));
+      if (!user || !user.agent_id) {
+        return next(new AppError("Only agents can perform top-up", 403));
+      }
       const wallet = await WalletService.topupWallet({
         agentId,
         clientId,
@@ -30,6 +35,7 @@ module.exports = {
         amount,
         reference,
         metadata,
+        user,
       });
       res.json({ wallet });
     } catch (err) {

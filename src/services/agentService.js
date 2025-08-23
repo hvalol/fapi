@@ -441,8 +441,6 @@ class AgentService {
         );
       }
 
-      await transaction.commit();
-
       // Create agent wallets if provided
       if (wallets && Array.isArray(wallets)) {
         for (const wallet of wallets) {
@@ -459,10 +457,18 @@ class AgentService {
           );
         }
       }
+
+      await transaction.commit();
+
       // Return created agent with associations
       return this.getAgentById(agent.id);
     } catch (error) {
-      await transaction.rollback();
+      if (
+        transaction.finished !== "commit" &&
+        transaction.finished !== "rollback"
+      ) {
+        await transaction.rollback();
+      }
       throw error;
     }
   }
